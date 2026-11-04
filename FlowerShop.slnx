@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/01.Domain/">
+    <Project Path="FlowerShop.Domain/FlowerShop.Domain.csproj" />
+  </Folder>
+  <Folder Name="/02.Infrastructure/">
+    <Project Path="FlowerShop.Infrastructure/FlowerShop.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/03.Application/">
+    <Project Path="FlowerShop.Application/FlowerShop.Application.csproj" />
+  </Folder>
+  <Folder Name="/04.Utility/">
+    <Project Path="FlowerShop.Utility/FlowerShop.Utility.csproj" />
+  </Folder>
+</Solution>

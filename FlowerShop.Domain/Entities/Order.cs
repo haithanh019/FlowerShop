@@ -11,6 +11,7 @@ public class Order : BaseEntity
 
     // Foreign Key
     public Guid UserId { get; set; }
+    public Guid? VoucherId { get; set; }
 
     // Shipping Information
     public string RecipientName { get; set; } = string.Empty;
@@ -33,9 +34,10 @@ public class Order : BaseEntity
 
     // Navigation Properties
     public User User { get; set; } = null!;
-
+    public Voucher? Voucher { get; set; }
     public ICollection<OrderItem> Items { get; set; }
         = new List<OrderItem>();
     public ICollection<Payment> Payments { get; set; }
     = new List<Payment>();
+
 }

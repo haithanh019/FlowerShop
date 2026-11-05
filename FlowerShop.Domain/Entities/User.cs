@@ -23,4 +23,6 @@ public class User : BaseEntity
     = new List<Order>();
     public ICollection<Review> Reviews { get; set; }
     = new List<Review>();
+    public ICollection<Notification> Notifications { get; set; }
+    = new List<Notification>();
 }

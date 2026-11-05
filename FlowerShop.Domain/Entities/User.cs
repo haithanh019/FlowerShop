@@ -18,4 +18,5 @@ public class User : BaseEntity
     // Navigation Property
     public ICollection<UserAddress> Addresses { get; set; }
         = new List<UserAddress>();
+    public Cart? Cart { get; set; }
 }

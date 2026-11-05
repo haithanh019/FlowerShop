@@ -1,5 +1,4 @@
-﻿
-using FlowerShop.Domain.Common;
+﻿using FlowerShop.Domain.Common;
 
 namespace FlowerShop.Domain.Entities;
 

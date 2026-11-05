@@ -18,4 +18,5 @@ public class OrderItem : BaseEntity
     // Navigation Properties
     public Order Order { get; set; } = null!;
     public Product Product { get; set; } = null!;
+    public Review? Review { get; set; }
 }

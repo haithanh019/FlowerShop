@@ -1,10 +1,13 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using FlowerShop.Domain.Common;
+using FlowerShop.Domain.Interfaces.Repositories;
 
-namespace FlowerShop.Domain.Interfaces
+namespace FlowerShop.Domain.Interfaces;
+
+public interface IUnitOfWork
 {
-    internal class IUnitOfWork
-    {
-    }
+    IGenericRepository<T> GetRepository<T>()
+        where T : BaseEntity;
+
+    Task<int> SaveChangesAsync(
+        CancellationToken cancellationToken = default);
 }

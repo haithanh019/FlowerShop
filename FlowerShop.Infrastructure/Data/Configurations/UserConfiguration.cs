@@ -12,7 +12,12 @@ public sealed class UserConfiguration
         base.Configure(builder);
 
         // Table
-        builder.ToTable("Users");
+        builder.ToTable("Users", table =>
+        {
+            table.HasCheckConstraint(
+                "CK_Users_Role_Valid",
+                "[Role] IN (0, 1)");
+        });
 
         // Full Name
         builder.Property(x => x.FullName)

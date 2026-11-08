@@ -60,21 +60,15 @@ namespace FlowerShop.Infrastructure.Data.Configurations
                 .OnDelete(DeleteBehavior.NoAction)
                 .IsRequired();
 
-            // Indexes
-            builder.HasIndex(x => new
-            {
-                x.UserId,
-                x.CreatedAt
-            })
-                .HasDatabaseName("IX_Notifications_UserId_CreatedAt");
+            // General index
+            builder.HasIndex(
+                x => new { x.UserId, x.CreatedAt },
+                "IX_Notifications_UserId_CreatedAt");
 
-            // Index for unread notifications
-            builder.HasIndex(x => new
-            {
-                x.UserId,
-                x.CreatedAt
-            })
-                .HasDatabaseName("IX_Notifications_Unread_UserId_CreatedAt")
+            // Filtered index
+            builder.HasIndex(
+                x => new { x.UserId, x.CreatedAt },
+                "IX_Notifications_Unread_UserId_CreatedAt")
                 .HasFilter("[ReadAt] IS NULL");
         }
     }

@@ -1,7 +1,4 @@
 
-using FlowerShop.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
-
 namespace FlowerShop.API
 {
     public class Program
@@ -13,9 +10,6 @@ namespace FlowerShop.API
             // Add services to the container.
 
             builder.Services.AddControllers();
-            builder.Services.AddDbContext<FlowerShopDbContext>(
-            options => options.UseSqlServer(
-            builder.Configuration.GetConnectionString("DefaultConnection")));
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
             builder.Services.AddOpenApi();
 

@@ -54,11 +54,6 @@ public class VoucherConfiguration : BaseEntityConfiguration<Voucher>
             table.HasCheckConstraint(
                 "CK_Vouchers_DateRange",
                 "[StartAt] < [EndAt]");
-
-            // Used count must not exceed usage limit if usage limit is set.
-            table.HasCheckConstraint(
-                "CK_Vouchers_UsedCount_Limit",
-                "[UsageLimit] IS NULL OR [UsedCount] <= [UsageLimit]");
         });
 
         // Code

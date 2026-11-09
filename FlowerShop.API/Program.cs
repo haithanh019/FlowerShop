@@ -1,6 +1,5 @@
 
-using FlowerShop.Infrastructure.Data;
-using Microsoft.EntityFrameworkCore;
+using FlowerShop.Infrastructure;
 
 namespace FlowerShop.API
 {
@@ -10,18 +9,24 @@ namespace FlowerShop.API
         {
             var builder = WebApplication.CreateBuilder(args);
 
-            // Add services to the container.
-
+            // Add controllers
             builder.Services.AddControllers();
-            builder.Services.AddDbContext<FlowerShopDbContext>(
-            options => options.UseSqlServer(
-            builder.Configuration.GetConnectionString("DefaultConnection")));
-            // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
+
+            // Get database connection string
+            var connectionString = builder.Configuration
+                .GetConnectionString("DefaultConnection")
+                ?? throw new InvalidOperationException(
+                    "Connection string 'DefaultConnection' not found.");
+
+            // Register Infrastructure services
+            builder.Services.AddInfrastructure(connectionString);
+
+            // OpenAPI
             builder.Services.AddOpenApi();
 
             var app = builder.Build();
 
-            // Configure the HTTP request pipeline.
+            // HTTP request pipeline
             if (app.Environment.IsDevelopment())
             {
                 app.MapOpenApi();
@@ -30,7 +35,6 @@ namespace FlowerShop.API
             app.UseHttpsRedirection();
 
             app.UseAuthorization();
-
 
             app.MapControllers();
 

@@ -29,6 +29,10 @@ public sealed class OrderConfiguration
                 "CK_Orders_Total_Valid",
                 "[TotalAmount] = " +
                 "[Subtotal] + [ShippingFee] - [DiscountAmount]");
+
+            table.HasCheckConstraint(
+                "CK_Orders_Status_Valid",
+                "[Status] IN (0, 1, 2, 3, 4, 5)");
         });
 
         // Order Information

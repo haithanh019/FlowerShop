@@ -106,10 +106,12 @@ public class VoucherConfiguration : BaseEntityConfiguration<Voucher>
 
         // StartAt
         builder.Property(x => x.StartAt)
+            .HasPrecision(3)
             .IsRequired();
 
         // EndAt
         builder.Property(x => x.EndAt)
+            .HasPrecision(3)
             .IsRequired();
 
         // IsActive

@@ -15,9 +15,4 @@
     <ProjectReference Include="..\FlowerShop.Domain\FlowerShop.Domain.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="UnitOfWork\" />
-    <Folder Include="Repositories\" />
-  </ItemGroup>
-
 </Project>

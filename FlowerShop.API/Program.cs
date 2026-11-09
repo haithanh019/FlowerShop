@@ -1,4 +1,4 @@
-
+using FlowerShop.Application;
 using FlowerShop.Infrastructure;
 
 namespace FlowerShop.API
@@ -17,6 +17,9 @@ namespace FlowerShop.API
                 .GetConnectionString("DefaultConnection")
                 ?? throw new InvalidOperationException(
                     "Connection string 'DefaultConnection' not found.");
+
+            // Register Application services
+            builder.Services.AddApplication();
 
             // Register Infrastructure services
             builder.Services.AddInfrastructure(connectionString);

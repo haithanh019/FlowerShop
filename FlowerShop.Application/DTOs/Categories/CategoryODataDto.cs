@@ -1,8 +1,10 @@
-﻿
+﻿using System.ComponentModel.DataAnnotations;
+
 namespace FlowerShop.Application.DTOs.Categories;
 
-public sealed class CategoryResponseDto
+public sealed class CategoryODataDto
 {
+    [Key]
     public Guid Id { get; set; }
 
     public string Name { get; set; } = string.Empty;

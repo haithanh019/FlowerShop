@@ -12,4 +12,5 @@
     <Project Path="FlowerShop.Utility/FlowerShop.Utility.csproj" />
   </Folder>
   <Project Path="FlowerShop.API/FlowerShop.API.csproj" />
+  <Project Path="FlowerShop.IntegrationTests/FlowerShop.IntegrationTests.csproj" />
 </Solution>

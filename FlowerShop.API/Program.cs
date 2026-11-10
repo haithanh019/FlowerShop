@@ -1,47 +1,63 @@
+using FlowerShop.API.OData;
 using FlowerShop.Application;
 using FlowerShop.Infrastructure;
+using Microsoft.AspNetCore.OData;
 
-namespace FlowerShop.API
+namespace FlowerShop.API;
+
+public class Program
 {
-    public class Program
+    public static void Main(string[] args)
     {
-        public static void Main(string[] args)
-        {
-            var builder = WebApplication.CreateBuilder(args);
+        var builder = WebApplication.CreateBuilder(args);
 
-            // Add controllers
-            builder.Services.AddControllers();
-
-            // Get database connection string
-            var connectionString = builder.Configuration
-                .GetConnectionString("DefaultConnection")
-                ?? throw new InvalidOperationException(
-                    "Connection string 'DefaultConnection' not found.");
-
-            // Register Application services
-            builder.Services.AddApplication();
-
-            // Register Infrastructure services
-            builder.Services.AddInfrastructure(connectionString);
-
-            // OpenAPI
-            builder.Services.AddOpenApi();
-
-            var app = builder.Build();
-
-            // HTTP request pipeline
-            if (app.Environment.IsDevelopment())
+        // Register Controllers and OData
+        builder.Services
+            .AddControllers()
+            .AddOData(options =>
             {
-                app.MapOpenApi();
-            }
+                options
+                    .Select()
+                    .Filter()
+                    .OrderBy()
+                    .Count()
+                    .SetMaxTop(100)
+                    .AddRouteComponents(
+                        "odata/v1",
+                        EdmModelFactory.Create());
+            });
 
-            app.UseHttpsRedirection();
+        // Get database connection string
+        var connectionString = builder.Configuration
+            .GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException(
+                "Connection string 'DefaultConnection' not found.");
 
-            app.UseAuthorization();
+        // Register Application
+        builder.Services.AddApplication();
 
-            app.MapControllers();
+        // Register Infrastructure
+        builder.Services.AddInfrastructure(connectionString);
 
-            app.Run();
+        // Register OpenAPI
+        builder.Services.AddOpenApi();
+
+        var app = builder.Build();
+
+        // HTTP request pipeline
+        if (app.Environment.IsDevelopment())
+        {
+            app.MapOpenApi();
         }
+
+        app.UseHttpsRedirection();
+
+        app.UseRouting();
+
+        app.UseAuthorization();
+
+        app.MapControllers();
+
+        app.Run();
     }
 }

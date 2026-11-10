@@ -24,6 +24,11 @@ public static class DependencyInjection
             typeof(IGenericRepository<>),
             typeof(GenericRepository<>));
 
+        // Register Read-Only Query Repository
+        services.AddScoped(
+            typeof(IReadOnlyQueryRepository<>),
+            typeof(ReadOnlyQueryRepository<>));
+
         // Register Unit of Work
         services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
 

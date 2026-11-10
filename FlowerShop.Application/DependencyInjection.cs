@@ -1,4 +1,6 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using FlowerShop.Application.Interfaces.Queries;
+using FlowerShop.Application.Queries;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace FlowerShop.Application;
 
@@ -9,8 +11,10 @@ public static class DependencyInjection
     {
         ArgumentNullException.ThrowIfNull(services);
 
-        // Register Application services here.
-        // Example: ICategoryService, IProductService, etc.
+        // Register Query Services
+        services.AddScoped<
+            ICategoryQueryService,
+            CategoryQueryService>();
 
         return services;
     }

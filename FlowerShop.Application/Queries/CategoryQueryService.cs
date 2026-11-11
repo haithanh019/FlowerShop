@@ -7,10 +7,12 @@ using FlowerShop.Domain.Interfaces.Repositories;
 
 namespace FlowerShop.Application.Queries;
 
-public sealed class CategoryQueryService : ICategoryQueryService
+public sealed class CategoryQueryService(
+    IReadOnlyQueryRepository<Category> queryRepository,
+    IGenericRepository<Category> categoryRepository) : ICategoryQueryService
 {
-    private readonly IReadOnlyQueryRepository<Category> _queryRepository;
-    private readonly IGenericRepository<Category> _categoryRepository;
+    private readonly IReadOnlyQueryRepository<Category> _queryRepository = queryRepository;
+    private readonly IGenericRepository<Category> _categoryRepository = categoryRepository;
 
     private static readonly Expression<Func<Category, CategoryODataDto>>
         Projection = category => new CategoryODataDto
@@ -25,14 +27,6 @@ public sealed class CategoryQueryService : ICategoryQueryService
 
     private static readonly Func<Category, CategoryODataDto>
         MapToDto = Projection.Compile();
-
-    public CategoryQueryService(
-        IReadOnlyQueryRepository<Category> queryRepository,
-        IGenericRepository<Category> categoryRepository)
-    {
-        _queryRepository = queryRepository;
-        _categoryRepository = categoryRepository;
-    }
 
     public IQueryable<CategoryODataDto> QueryCategories()
     {

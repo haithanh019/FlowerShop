@@ -2,6 +2,7 @@ using FlowerShop.API.OData;
 using FlowerShop.Application;
 using FlowerShop.Infrastructure;
 using Microsoft.AspNetCore.OData;
+using FlowerShop.API.ExceptionHandlers;
 
 namespace FlowerShop.API;
 
@@ -27,6 +28,12 @@ public class Program
                         EdmModelFactory.Create());
             });
 
+
+        // Register Exception Handling
+        builder.Services.AddProblemDetails();
+        builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+        builder.Services.AddAuthorization();
+
         // Get database connection string
         var connectionString = builder.Configuration
             .GetConnectionString("DefaultConnection")
@@ -43,6 +50,13 @@ public class Program
         builder.Services.AddOpenApi();
 
         var app = builder.Build();
+
+
+        // Register Exception Handling
+        app.UseExceptionHandler(new ExceptionHandlerOptions
+        {
+            AllowStatusCode404Response = true
+        });
 
         // HTTP request pipeline
         if (app.Environment.IsDevelopment())

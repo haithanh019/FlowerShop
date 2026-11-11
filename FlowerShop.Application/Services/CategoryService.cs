@@ -8,14 +8,9 @@ using FlowerShop.Domain.Interfaces;
 
 namespace FlowerShop.Application.Services;
 
-public sealed class CategoryService : ICategoryService
+public sealed class CategoryService(IUnitOfWork unitOfWork) : ICategoryService
 {
-    private readonly IUnitOfWork _unitOfWork;
-
-    public CategoryService(IUnitOfWork unitOfWork)
-    {
-        _unitOfWork = unitOfWork;
-    }
+    private readonly IUnitOfWork _unitOfWork = unitOfWork;
 
     public async Task<CategoryODataDto> CreateAsync(
         CreateCategoryDto dto,
@@ -48,19 +43,21 @@ public sealed class CategoryService : ICategoryService
         var category = await repository.GetByIdAsync(
             id, trackChanges: true, cancellationToken: cancellationToken);
 
-        if (category is null)
-            throw new BusinessException(
+        if (category is not null)
+        {
+            await EnsureSlugAvailableAsync(
+                    dto.Slug.Trim(), id, cancellationToken);
+
+            dto.ApplyTo(category);
+            category.UpdatedAt = DateTime.UtcNow;
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+
+            return category.ToDto();
+        }
+
+        throw new BusinessException(
                 BusinessErrorType.NotFound, "CATEGORY_NOT_FOUND");
-
-        await EnsureSlugAvailableAsync(
-            dto.Slug.Trim(), id, cancellationToken);
-
-        dto.ApplyTo(category);
-        category.UpdatedAt = DateTime.UtcNow;
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
-
-        return category.ToDto();
     }
 
     public async Task DeleteAsync(
@@ -72,23 +69,25 @@ public sealed class CategoryService : ICategoryService
         var category = await repository.GetByIdAsync(
             id, trackChanges: true, cancellationToken: cancellationToken);
 
-        if (category is null)
+        if (category is not null)
+        {
+            var product = await _unitOfWork
+                    .GetRepository<Product>()
+                    .GetByAsync(
+                        x => x.CategoryId == id,
+                        cancellationToken: cancellationToken);
+
+            if (product is not null)
+                throw new BusinessException(
+                    BusinessErrorType.Conflict, "CATEGORY_HAS_PRODUCTS");
+
+            repository.Delete(category);
+
+            await _unitOfWork.SaveChangesAsync(cancellationToken);
+        }
+        else
             throw new BusinessException(
-                BusinessErrorType.NotFound, "CATEGORY_NOT_FOUND");
-
-        var product = await _unitOfWork
-            .GetRepository<Product>()
-            .GetByAsync(
-                x => x.CategoryId == id,
-                cancellationToken: cancellationToken);
-
-        if (product is not null)
-            throw new BusinessException(
-                BusinessErrorType.Conflict, "CATEGORY_HAS_PRODUCTS");
-
-        repository.Delete(category);
-
-        await _unitOfWork.SaveChangesAsync(cancellationToken);
+                        BusinessErrorType.NotFound, "CATEGORY_NOT_FOUND");
     }
 
     private async Task EnsureSlugAvailableAsync(

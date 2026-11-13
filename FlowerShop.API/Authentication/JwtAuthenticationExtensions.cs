@@ -1,7 +1,7 @@
-﻿
-using System.Text;
+﻿using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
+using FlowerShop.Application.Interfaces.Services;
 
 namespace FlowerShop.API.Authentication;
 
@@ -63,6 +63,7 @@ public static class JwtAuthenticationExtensions
             });
 
         services.AddAuthorization();
+        services.AddScoped<IJwtTokenService, JwtTokenService>();
 
         return services;
     }

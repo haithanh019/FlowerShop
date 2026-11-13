@@ -3,7 +3,8 @@
 public enum BusinessErrorType
 {
     NotFound,
-    Conflict
+    Conflict,
+    Unauthorized,
 }
 
 public sealed class BusinessException(

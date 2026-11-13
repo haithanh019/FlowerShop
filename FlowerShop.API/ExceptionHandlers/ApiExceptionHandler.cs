@@ -22,7 +22,10 @@ public sealed class ApiExceptionHandler(
 
             BusinessException { ErrorType: BusinessErrorType.Conflict }
                 => StatusCodes.Status409Conflict,
-
+           
+            BusinessException { ErrorType: BusinessErrorType.Unauthorized }
+                => StatusCodes.Status401Unauthorized,
+            
             ValidationException
                 => StatusCodes.Status400BadRequest,
 

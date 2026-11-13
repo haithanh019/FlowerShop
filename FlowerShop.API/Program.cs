@@ -3,6 +3,7 @@ using FlowerShop.Application;
 using FlowerShop.Infrastructure;
 using Microsoft.AspNetCore.OData;
 using FlowerShop.API.ExceptionHandlers;
+using FlowerShop.API.Authentication;
 
 namespace FlowerShop.API;
 
@@ -32,7 +33,7 @@ public class Program
         // Register Exception Handling
         builder.Services.AddProblemDetails();
         builder.Services.AddExceptionHandler<ApiExceptionHandler>();
-        builder.Services.AddAuthorization();
+        builder.Services.AddJwtAuthentication(builder.Configuration);
 
         // Get database connection string
         var connectionString = builder.Configuration
@@ -67,6 +68,8 @@ public class Program
         app.UseHttpsRedirection();
 
         app.UseRouting();
+
+        app.UseAuthentication();
 
         app.UseAuthorization();
 

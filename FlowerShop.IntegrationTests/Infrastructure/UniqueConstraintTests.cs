@@ -6,6 +6,9 @@ using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Xunit;
+using FlowerShop.API.ExceptionHandlers;
+using Microsoft.AspNetCore.Http;
+using System.Text.Json;
 
 namespace FlowerShop.IntegrationTests.Infrastructure;
 
@@ -46,8 +49,11 @@ public class UniqueConstraintTests
         }
 
         // 3. Configure Dependency Injection
+        // 3. Configure Dependency Injection
         var services = new ServiceCollection();
 
+        services.AddLogging();
+        services.AddProblemDetails();
         services.AddInfrastructure(connectionString);
 
         using var provider = services.BuildServiceProvider(
@@ -118,6 +124,38 @@ public class UniqueConstraintTests
         Assert.Contains(
             sqlException.Number,
             new[] { 2601, 2627 });
+
+
+
+        // Verify global exception handler
+        var httpContext = new DefaultHttpContext
+        {
+            RequestServices = scope.ServiceProvider
+        };
+
+        httpContext.Request.Headers.Accept = "application/problem+json";
+        httpContext.Response.Body = new MemoryStream();
+
+        var handler = new ApiExceptionHandler(
+            scope.ServiceProvider.GetRequiredService<IProblemDetailsService>());
+
+        var handled = await handler.TryHandleAsync(
+            httpContext,
+            exception,
+            CancellationToken.None);
+
+        Assert.True(handled);
+        Assert.Equal(409, httpContext.Response.StatusCode);
+
+        httpContext.Response.Body.Position = 0;
+
+        using var response = await JsonDocument.ParseAsync(
+            httpContext.Response.Body);
+
+        Assert.Equal(
+            "UNIQUE_CONSTRAINT_VIOLATION",
+            response.RootElement.GetProperty("detail").GetString());
+
 
         // 10. Clear entities after failed SaveChanges
         context.ChangeTracker.Clear();

@@ -4,6 +4,8 @@ using FlowerShop.Application.Common.Exceptions;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
+using Microsoft.Data.SqlClient;
+using Microsoft.EntityFrameworkCore;
 
 namespace FlowerShop.API.ExceptionHandlers;
 
@@ -17,6 +19,11 @@ public sealed class ApiExceptionHandler(
     {
         var status = exception switch
         {
+            DbUpdateException
+            {
+                InnerException: SqlException { Number: 2601 or 2627 }
+            } => StatusCodes.Status409Conflict,
+
             BusinessException { ErrorType: BusinessErrorType.NotFound }
                 => StatusCodes.Status404NotFound,
 
@@ -45,7 +52,9 @@ public sealed class ApiExceptionHandler(
                 {
                     Status = status,
                     Title = ReasonPhrases.GetReasonPhrase(status),
-                    Detail = exception.Message
+                    Detail = exception is DbUpdateException
+                    ? "UNIQUE_CONSTRAINT_VIOLATION"
+                    : exception.Message
                 }
             });
     }

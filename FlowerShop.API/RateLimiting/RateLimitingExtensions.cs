@@ -1,5 +1,4 @@
-﻿
-using System.Threading.RateLimiting;
+﻿using System.Threading.RateLimiting;
 
 namespace FlowerShop.API.RateLimiting;
 

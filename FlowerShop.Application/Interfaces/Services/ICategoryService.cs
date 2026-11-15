@@ -1,5 +1,4 @@
-﻿
-using FlowerShop.Application.DTOs.Categories;
+﻿using FlowerShop.Application.DTOs.Categories;
 
 namespace FlowerShop.Application.Interfaces.Services;
 

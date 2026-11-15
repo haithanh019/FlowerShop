@@ -1,5 +1,4 @@
-﻿
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using System.Text;
 using FlowerShop.Application.DTOs.Auth;
 using FlowerShop.Application.Interfaces.Services;

@@ -1,5 +1,4 @@
-﻿
-using FlowerShop.Application;
+﻿using FlowerShop.Application;
 using FlowerShop.Application.Interfaces.Queries;
 using FlowerShop.Domain.Entities;
 using FlowerShop.Domain.Interfaces;

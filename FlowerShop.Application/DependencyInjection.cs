@@ -16,15 +16,12 @@ public static class DependencyInjection
         ArgumentNullException.ThrowIfNull(services);
 
         // Register Query Services
-        services.AddScoped<
-            ICategoryQueryService,
-            CategoryQueryService>();
+        services.AddScoped<ICategoryQueryService,CategoryQueryService>();
+        services.AddScoped<IProductQueryService,ProductQueryService>();
 
         // Register Application Services
         services.AddScoped<IAuthService, AuthService>();
-        services.AddScoped<
-            IPasswordHasher<User>,
-            PasswordHasher<User>>();
+        services.AddScoped<IPasswordHasher<User>,PasswordHasher<User>>();
 
         // Register Domain Services
         services.AddScoped<IUserAccessService, UserAccessService>();

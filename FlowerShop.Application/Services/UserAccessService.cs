@@ -1,5 +1,4 @@
-﻿
-using FlowerShop.Application.Interfaces.Services;
+﻿using FlowerShop.Application.Interfaces.Services;
 using FlowerShop.Domain.Entities;
 using FlowerShop.Domain.Interfaces.Repositories;
 

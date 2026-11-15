@@ -1,5 +1,4 @@
-﻿
-using FlowerShop.Application.DTOs.Categories;
+﻿using FlowerShop.Application.DTOs.Categories;
 using FlowerShop.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;

@@ -1,5 +1,4 @@
-﻿
-using FlowerShop.Application.Interfaces.Services;
+﻿using FlowerShop.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 
 namespace FlowerShop.API.Authentication;

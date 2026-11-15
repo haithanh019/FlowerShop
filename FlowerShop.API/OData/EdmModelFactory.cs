@@ -23,6 +23,12 @@ public static class EdmModelFactory
 
         products.EntityType.HasKey(x => x.Id);
 
+        // Admin Product Entity Set
+        var adminProducts =
+            builder.EntitySet<AdminProductODataDto>("AdminProducts");
+
+        adminProducts.EntityType.HasKey(x => x.Id);
+
         return builder.GetEdmModel();
     }
 }

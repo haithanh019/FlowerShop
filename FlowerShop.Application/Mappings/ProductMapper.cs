@@ -26,20 +26,7 @@ public static class ProductMapper
         => MapToDto(product);
 
     public static AdminProductODataDto ToAdminDto(this Product product)
-        => new()
-        {
-            Id = product.Id,
-            Name = product.Name,
-            Slug = product.Slug,
-            Description = product.Description,
-            Price = product.Price,
-            StockQuantity = product.StockQuantity,
-            IsActive = product.IsActive,
-            CategoryId = product.CategoryId,
-            CreatedAt = product.CreatedAt,
-            UpdatedAt = product.UpdatedAt
-        };
-
+        => MapToAdminDto(product);
     public static Product ToEntity(this CreateProductDto dto)
     {
         var product = new Product
@@ -71,4 +58,23 @@ public static class ProductMapper
         product.Price = dto.Price;
         product.CategoryId = dto.CategoryId;
     }
+
+    public static readonly Expression<Func<Product, AdminProductODataDto>>
+        AdminProjection = product => new AdminProductODataDto
+        {
+            Id = product.Id,
+            Name = product.Name,
+            Slug = product.Slug,
+            Description = product.Description,
+            Price = product.Price,
+            StockQuantity = product.StockQuantity,
+            IsActive = product.IsActive,
+            CategoryId = product.CategoryId,
+            CreatedAt = product.CreatedAt,
+            UpdatedAt = product.UpdatedAt
+        };
+
+    private static readonly Func<Product, AdminProductODataDto>
+        MapToAdminDto = AdminProjection.Compile();
+
 }

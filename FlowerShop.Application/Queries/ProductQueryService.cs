@@ -26,4 +26,19 @@ public sealed class ProductQueryService(
 
         return product?.ToDto();
     }
+    public IQueryable<AdminProductODataDto> QueryAdminProducts()
+        => queryRepository.Query()
+            .Select(ProductMapper.AdminProjection);
+
+    public async Task<AdminProductODataDto?> GetAdminByIdAsync(
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        var product = await productRepository.GetByIdAsync(
+            id,
+            cancellationToken: cancellationToken);
+
+        return product?.ToAdminDto();
+    }
+
 }

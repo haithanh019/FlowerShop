@@ -9,4 +9,10 @@ public interface IProductQueryService
     Task<ProductODataDto?> GetByIdAsync(
         Guid id,
         CancellationToken cancellationToken = default);
+
+    IQueryable<AdminProductODataDto> QueryAdminProducts();
+
+    Task<AdminProductODataDto?> GetAdminByIdAsync(
+        Guid id,
+        CancellationToken cancellationToken = default);
 }

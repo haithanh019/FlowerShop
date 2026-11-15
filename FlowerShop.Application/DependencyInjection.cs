@@ -25,8 +25,9 @@ public static class DependencyInjection
 
         // Register Domain Services
         services.AddScoped<IUserAccessService, UserAccessService>();
-
         services.AddScoped<ICategoryService, CategoryService>();
+        services.AddScoped<IProductService, ProductService>();
+
         return services;
     }
 }

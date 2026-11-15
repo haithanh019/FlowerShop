@@ -1,18 +1,11 @@
-﻿namespace FlowerShop.Application.DTOs.Products;
+﻿using System.ComponentModel.DataAnnotations;
 
-public sealed class CreateProductDto
+namespace FlowerShop.Application.DTOs.Products;
+
+public sealed class CreateProductDto : ProductUpsertDto
 {
-    public string Name { get; set; } = string.Empty;
-
-    public string Slug { get; set; } = string.Empty;
-
-    public string? Description { get; set; }
-
-    public decimal Price { get; set; }
-
+    [Range(0, int.MaxValue)]
     public int StockQuantity { get; set; }
-
-    public Guid CategoryId { get; set; }
 
     public bool IsActive { get; set; } = false;
 }

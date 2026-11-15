@@ -26,6 +26,9 @@ public static class DependencyInjection
             IPasswordHasher<User>,
             PasswordHasher<User>>();
 
+        // Register Domain Services
+        services.AddScoped<IUserAccessService, UserAccessService>();
+
         services.AddScoped<ICategoryService, CategoryService>();
         return services;
     }

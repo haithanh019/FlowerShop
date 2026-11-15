@@ -1,9 +1,10 @@
+using FlowerShop.API.Authentication;
+using FlowerShop.API.ExceptionHandlers;
 using FlowerShop.API.OData;
+using FlowerShop.API.RateLimiting;
 using FlowerShop.Application;
 using FlowerShop.Infrastructure;
 using Microsoft.AspNetCore.OData;
-using FlowerShop.API.ExceptionHandlers;
-using FlowerShop.API.Authentication;
 
 namespace FlowerShop.API;
 
@@ -29,6 +30,8 @@ public class Program
                         EdmModelFactory.Create());
             });
 
+        // Register Rate Limiting
+        builder.Services.AddApiRateLimiting();
 
         // Register Exception Handling
         builder.Services.AddProblemDetails();
@@ -68,6 +71,8 @@ public class Program
         app.UseHttpsRedirection();
 
         app.UseRouting();
+
+        app.UseRateLimiter();
 
         app.UseAuthentication();
 

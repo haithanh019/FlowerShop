@@ -60,10 +60,13 @@ public static class JwtAuthenticationExtensions
                         NameClaimType = "sub",
                         RoleClaimType = "role"
                     };
+
+                options.EventsType = typeof(JwtUserValidationEvents);
             });
 
         services.AddAuthorization();
         services.AddScoped<IJwtTokenService, JwtTokenService>();
+        services.AddScoped<JwtUserValidationEvents>();
 
         return services;
     }

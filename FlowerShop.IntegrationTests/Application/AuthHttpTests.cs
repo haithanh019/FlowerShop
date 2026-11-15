@@ -131,6 +131,29 @@ public class AuthHttpTests
 
             var notFound = await client.PutAsJsonAsync(url, dto);
             Assert.Equal(HttpStatusCode.NotFound, notFound.StatusCode);
+
+
+            // Admin account is disabled -> existing token must be rejected
+            admin.IsActive = false;
+            await db.SaveChangesAsync();
+
+            var disabled = await client.PutAsJsonAsync(url, dto);
+
+            Assert.Equal(
+                HttpStatusCode.Unauthorized,
+                disabled.StatusCode);
+
+            // Admin role is changed -> old Admin token must be rejected
+            admin.IsActive = true;
+            admin.Role = UserRole.Customer;
+            await db.SaveChangesAsync();
+
+            var outdatedRole = await client.PutAsJsonAsync(url, dto);
+
+            Assert.Equal(
+                HttpStatusCode.Unauthorized,
+                outdatedRole.StatusCode);
+
         }
         finally
         {
@@ -160,4 +183,42 @@ public class AuthHttpTests
             return base.CreateHost(builder);
         }
     }
+
+
+    [Fact]
+    public async Task Login_ShouldReturn429_WhenRateLimitExceeded()
+    {
+        var connection = Environment.GetEnvironmentVariable(
+            "FLOWERSHOP_TEST_CONNECTION_STRING")
+            ?? throw new InvalidOperationException("Missing test connection.");
+
+        if (new SqlConnectionStringBuilder(connection).InitialCatalog
+            != "FlowerShop_Test")
+            throw new InvalidOperationException("Invalid test database.");
+
+        using var factory = new TestApiFactory(connection);
+        using var client = factory.CreateClient();
+
+        var login = new LoginDto
+        {
+            Email = "unknown@example.invalid",
+            Password = "InvalidPassword"
+        };
+
+        for (var i = 0; i < 10; i++)
+        {
+            var response = await client.PostAsJsonAsync(
+                "/api/auth/login", login);
+
+            Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        }
+
+        var rejected = await client.PostAsJsonAsync(
+            "/api/auth/login", login);
+
+        Assert.Equal(
+            HttpStatusCode.TooManyRequests,
+            rejected.StatusCode);
+    }
+
 }

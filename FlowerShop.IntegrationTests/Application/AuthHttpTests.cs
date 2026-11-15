@@ -19,6 +19,7 @@ using System.Net.Http.Json;
 using System.Security.Cryptography;
 using ApiProgram = FlowerShop.API.Program;
 using Xunit;
+using FlowerShop.IntegrationTests.Helpers;
 
 namespace FlowerShop.IntegrationTests.Application;
 
@@ -161,29 +162,6 @@ public class AuthHttpTests
             await db.SaveChangesAsync();
         }
     }
-
-    private sealed class TestApiFactory(string connection)
-        : WebApplicationFactory<ApiProgram>
-    {
-        protected override IHost CreateHost(IHostBuilder builder)
-        {
-            builder.UseEnvironment("Testing");
-
-            builder.ConfigureHostConfiguration(config =>
-                config.AddInMemoryCollection(
-                    new Dictionary<string, string?>
-                    {
-                        ["ConnectionStrings:DefaultConnection"] = connection,
-                        ["Jwt:Issuer"] = "FlowerShop.Tests",
-                        ["Jwt:Audience"] = "FlowerShop.Tests.Client",
-                        ["Jwt:Key"] = Convert.ToBase64String(
-                            RandomNumberGenerator.GetBytes(48))
-                    }));
-
-            return base.CreateHost(builder);
-        }
-    }
-
 
     [Fact]
     public async Task Login_ShouldReturn429_WhenRateLimitExceeded()

@@ -1,7 +1,8 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿using FlowerShop.Application.DTOs.ProductImages;
 using FlowerShop.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.ComponentModel.DataAnnotations;
 
 namespace FlowerShop.API.Controllers;
 
@@ -34,4 +35,41 @@ public sealed class ProductImagesController(
 
         return StatusCode(StatusCodes.Status201Created, result);
     }
+
+    [HttpDelete("{imageId:guid}")]
+    public async Task<IActionResult> Delete(
+        Guid productId,
+        Guid imageId,
+        CancellationToken cancellationToken)
+    {
+        await service.DeleteAsync(
+            productId, imageId, cancellationToken);
+
+        return NoContent();
+    }
+
+    [HttpPut("{imageId:guid}/primary")]
+    public async Task<IActionResult> SetPrimary(
+        Guid productId,
+        Guid imageId,
+        CancellationToken cancellationToken)
+    {
+        await service.SetPrimaryAsync(
+            productId, imageId, cancellationToken);
+
+        return NoContent();
+    }
+
+    [HttpPut("order")]
+    public async Task<IActionResult> Reorder(
+        Guid productId,
+        [FromBody] ReorderProductImagesDto dto,
+        CancellationToken cancellationToken)
+    {
+        await service.ReorderAsync(
+            productId, dto.ImageIds, cancellationToken);
+
+        return NoContent();
+    }
+
 }

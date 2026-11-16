@@ -31,6 +31,7 @@ public static class DependencyInjection
         // Register Product Stock Repository
         services.AddScoped<IProductStockRepository, ProductStockRepository>();
         services.AddScoped<IImageStorageRepository, CloudinaryImageRepository>();
+        services.AddScoped<IProductImagePrimaryRepository, ProductImagePrimaryRepository>();
         return services;
     }
 }

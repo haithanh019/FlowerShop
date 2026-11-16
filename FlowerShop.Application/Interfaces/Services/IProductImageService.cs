@@ -11,4 +11,20 @@ public interface IProductImageService
         string contentType,
         long fileLength,
         CancellationToken cancellationToken = default);
+
+    Task DeleteAsync(
+        Guid productId,
+        Guid imageId,
+        CancellationToken cancellationToken = default);
+
+    Task SetPrimaryAsync(
+        Guid productId,
+        Guid imageId,
+        CancellationToken cancellationToken = default);
+
+    Task ReorderAsync(
+        Guid productId,
+        IReadOnlyList<Guid> orderedImageIds,
+        CancellationToken cancellationToken = default);
+
 }

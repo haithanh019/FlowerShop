@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<IProductQueryService,ProductQueryService>();
         services.AddScoped<IProductImageQueryService, ProductImageQueryService>();
         services.AddScoped<ICartQueryService, CartQueryService>();
+
         // Register Application Services
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IPasswordHasher<User>,PasswordHasher<User>>();
@@ -30,6 +31,7 @@ public static class DependencyInjection
         services.AddScoped<IProductService, ProductService>();
         services.AddScoped<IProductStockService, ProductStockService>();
         services.AddScoped<IProductImageService, ProductImageService>();
+        services.AddScoped<ICartService, CartService>();
 
         return services;
     }

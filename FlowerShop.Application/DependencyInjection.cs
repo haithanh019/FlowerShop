@@ -19,7 +19,7 @@ public static class DependencyInjection
         services.AddScoped<ICategoryQueryService,CategoryQueryService>();
         services.AddScoped<IProductQueryService,ProductQueryService>();
         services.AddScoped<IProductImageQueryService, ProductImageQueryService>();
-
+        services.AddScoped<ICartQueryService, CartQueryService>();
         // Register Application Services
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IPasswordHasher<User>,PasswordHasher<User>>();

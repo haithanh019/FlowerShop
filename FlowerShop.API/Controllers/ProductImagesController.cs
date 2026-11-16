@@ -1,4 +1,5 @@
 ﻿using FlowerShop.Application.DTOs.ProductImages;
+using FlowerShop.Application.Interfaces.Queries;
 using FlowerShop.Application.Interfaces.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -10,7 +11,7 @@ namespace FlowerShop.API.Controllers;
 [Route("api/products/{productId:guid}/images")]
 [Authorize(Roles = "Admin")]
 public sealed class ProductImagesController(
-    IProductImageService service) : ControllerBase
+    IProductImageService service, IProductImageQueryService queryService) : ControllerBase
 {
     [HttpPost]
     [Consumes("multipart/form-data")]
@@ -71,5 +72,29 @@ public sealed class ProductImagesController(
 
         return NoContent();
     }
+
+    [HttpGet]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetPublic(
+        Guid productId,
+        CancellationToken cancellationToken)
+    {
+        var images = await queryService.GetPublicAsync(
+            productId, cancellationToken);
+
+        return Ok(images);
+    }
+
+    [HttpGet("/api/admin/products/{productId:guid}/images")]
+    public async Task<IActionResult> GetAdmin(
+        Guid productId,
+        CancellationToken cancellationToken)
+    {
+        var images = await queryService.GetAdminAsync(
+            productId, cancellationToken);
+
+        return Ok(images);
+    }
+
 
 }

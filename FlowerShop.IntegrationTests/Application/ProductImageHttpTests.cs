@@ -102,6 +102,15 @@ public class ProductImageHttpTests
         await db.SaveChangesAsync();
 
         var url = $"/api/products/{product.Id}/images";
+        var adminImagesUrl = $"/api/admin/products/{product.Id}/images";
+        client.DefaultRequestHeaders.Authorization = null;
+
+        using (var response = await client.GetAsync(adminImagesUrl))
+        {
+            Assert.Equal(
+                HttpStatusCode.Unauthorized,
+                response.StatusCode);
+        }
 
         try
         {
@@ -170,6 +179,53 @@ public class ProductImageHttpTests
             // 4. Upload two images
             var first = await UploadAsync();
             var second = await UploadAsync();
+
+            // Public can view active Product images
+            client.DefaultRequestHeaders.Authorization = null;
+
+            var publicImages = await client
+                .GetFromJsonAsync<List<ProductImageDto>>(url);
+
+            Assert.NotNull(publicImages);
+            Assert.Equal(2, publicImages.Count);
+
+            Assert.Contains(publicImages, x => x.Id == first.Id);
+            Assert.Contains(publicImages, x => x.Id == second.Id);
+
+            // Restore Admin token
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue(
+                    "Bearer", adminToken);
+
+            // Admin can view images
+            var adminImages = await client
+                .GetFromJsonAsync<List<ProductImageDto>>(adminImagesUrl);
+
+            Assert.NotNull(adminImages);
+            Assert.Equal(2, adminImages.Count);
+
+            // Hide Product
+            product.IsActive = false;
+            await db.SaveChangesAsync();
+
+            // Public must not view hidden Product images
+            using (var response = await client.GetAsync(url))
+            {
+                Assert.Equal(
+                    HttpStatusCode.NotFound,
+                    response.StatusCode);
+            }
+
+            // Admin can still view hidden Product images
+            adminImages = await client
+                .GetFromJsonAsync<List<ProductImageDto>>(adminImagesUrl);
+
+            Assert.NotNull(adminImages);
+            Assert.Equal(2, adminImages.Count);
+
+            // Restore Product state for remaining tests
+            product.IsActive = true;
+            await db.SaveChangesAsync();
 
             Assert.NotEqual(first.Id, second.Id);
 
@@ -243,7 +299,20 @@ public class ProductImageHttpTests
                 .Select(x => x.Id)
                 .ToArrayAsync();
 
-            Assert.Equal(new[] { second.Id, first.Id }, orderedIds);
+            Assert.Equal([second.Id, first.Id], orderedIds);
+
+            var sortedImages = await client
+                .GetFromJsonAsync<List<ProductImageDto>>(url);
+
+            Assert.NotNull(sortedImages);
+
+            Assert.Equal(
+                [second.Id, first.Id],
+                [.. sortedImages.Select(x => x.Id)]);
+
+            Assert.Equal(
+                [0, 1],
+                [.. sortedImages.Select(x => x.SortOrder)]);
 
             // 10. Duplicate IDs -> 400
             using (var response = await client.PutAsJsonAsync(
@@ -305,6 +374,28 @@ public class ProductImageHttpTests
                 .SingleAsync(x => x.Id == second.Id);
 
             Assert.True(remaining.IsPrimary);
+
+
+            // 14. Anonymous cannot access admin endpoint
+            client.DefaultRequestHeaders.Authorization = null;
+
+            using (var response = await client.GetAsync(adminImagesUrl))
+            {
+                Assert.Equal(
+                    HttpStatusCode.Unauthorized,
+                    response.StatusCode);
+            }
+
+            // 15. Customer cannot access admin endpoint
+            client.DefaultRequestHeaders.Authorization =
+                new AuthenticationHeaderValue("Bearer", customerToken);
+
+            using (var response = await client.GetAsync(adminImagesUrl))
+            {
+                Assert.Equal(
+                    HttpStatusCode.Forbidden,
+                    response.StatusCode);
+            }
         }
         finally
         {

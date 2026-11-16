@@ -43,11 +43,8 @@ public sealed class ProductImageService(
             throw new ValidationException("INVALID_IMAGE_TYPE");
 
         // Product must exist
-        var product = await unitOfWork.GetRepository<Product>()
-            .GetByIdAsync(productId, cancellationToken: cancellationToken);
-
-        if (product is null)
-            throw new BusinessException(
+        _ = await unitOfWork.GetRepository<Product>()
+            .GetByIdAsync(productId, cancellationToken: cancellationToken) ?? throw new BusinessException(
                 BusinessErrorType.NotFound, "PRODUCT_NOT_FOUND");
 
         // Buffer file with a hard size limit
@@ -160,10 +157,7 @@ public sealed class ProductImageService(
         var image = await repository.GetByAsync(
             x => x.Id == imageId && x.ProductId == productId,
             trackChanges: true,
-            cancellationToken: cancellationToken);
-
-        if (image is null)
-            throw new BusinessException(
+            cancellationToken: cancellationToken) ?? throw new BusinessException(
                 BusinessErrorType.NotFound, "PRODUCT_IMAGE_NOT_FOUND");
 
         // Delete from Cloudinary first
@@ -186,12 +180,8 @@ public sealed class ProductImageService(
             .GetRepository<ProductImage>()
             .GetByAsync(
                 x => x.Id == imageId && x.ProductId == productId,
-                cancellationToken: cancellationToken);
-
-        if (image is null)
-            throw new BusinessException(
+                cancellationToken: cancellationToken) ?? throw new BusinessException(
                 BusinessErrorType.NotFound, "PRODUCT_IMAGE_NOT_FOUND");
-
         var success = await primaryRepository.SetPrimaryAsync(
             productId, imageId, cancellationToken);
 
@@ -210,12 +200,8 @@ public sealed class ProductImageService(
             throw new ValidationException("INVALID_IMAGE_ORDER");
 
         var product = await unitOfWork.GetRepository<Product>()
-            .GetByIdAsync(productId, cancellationToken: cancellationToken);
-
-        if (product is null)
-            throw new BusinessException(
+            .GetByIdAsync(productId, cancellationToken: cancellationToken) ?? throw new BusinessException(
                 BusinessErrorType.NotFound, "PRODUCT_NOT_FOUND");
-
         var images = await unitOfWork.GetRepository<ProductImage>()
             .FindAsync(
                 x => x.ProductId == productId,

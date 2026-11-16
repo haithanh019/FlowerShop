@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿
+using System.ComponentModel.DataAnnotations;
 using FlowerShop.Application.Common.Exceptions;
 using FlowerShop.Application.DTOs.Carts;
 using FlowerShop.Application.Interfaces.Services;
@@ -10,12 +11,64 @@ namespace FlowerShop.Application.Services;
 public sealed class CartService(IUnitOfWork unitOfWork)
     : ICartService
 {
-    public async Task AddItemAsync(
+    public Task AddItemAsync(
         Guid userId,
         AddCartItemDto dto,
         CancellationToken cancellationToken = default)
     {
+        return ExecuteCartWriteAsync(
+            userId,
+            ct => AddItemCoreAsync(userId, dto, ct),
+            cancellationToken);
+    }
+
+    public Task UpdateQuantityAsync(
+        Guid userId,
+        Guid cartItemId,
+        UpdateCartItemDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        return ExecuteCartWriteAsync(
+            userId,
+            ct => UpdateQuantityCoreAsync(
+                userId, cartItemId, dto, ct),
+            cancellationToken);
+    }
+
+    public Task RemoveItemAsync(
+        Guid userId,
+        Guid cartItemId,
+        CancellationToken cancellationToken = default)
+    {
+        return ExecuteCartWriteAsync(
+            userId,
+            ct => RemoveItemCoreAsync(
+                userId, cartItemId, ct),
+            cancellationToken);
+    }
+
+    private async Task ExecuteCartWriteAsync(
+        Guid userId,
+        Func<CancellationToken, Task> operation,
+        CancellationToken cancellationToken)
+    {
         ValidateUserId(userId);
+
+        await unitOfWork.ExecuteInLockedTransactionAsync(
+            $"flower-shop:cart:{userId:N}",
+            async ct =>
+            {
+                await operation(ct);
+                return true;
+            },
+            cancellationToken);
+    }
+
+    private async Task AddItemCoreAsync(
+        Guid userId,
+        AddCartItemDto dto,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(dto);
 
         Validator.ValidateObject(
@@ -32,7 +85,6 @@ public sealed class CartService(IUnitOfWork unitOfWork)
         var cartRepository = unitOfWork.GetRepository<Cart>();
         var itemRepository = unitOfWork.GetRepository<CartItem>();
 
-        // Find existing cart
         var cart = await cartRepository.GetByAsync(
             x => x.UserId == userId,
             trackChanges: true,
@@ -40,7 +92,6 @@ public sealed class CartService(IUnitOfWork unitOfWork)
 
         var isNewCart = cart is null;
 
-        // Create cart only when adding the first item
         if (cart is null)
         {
             cart = new Cart { UserId = userId };
@@ -75,7 +126,6 @@ public sealed class CartService(IUnitOfWork unitOfWork)
         }
         else
         {
-            // Prevent integer overflow and exceeding stock
             if (existingItem.Quantity >
                 product.StockQuantity - dto.Quantity)
             {
@@ -87,18 +137,14 @@ public sealed class CartService(IUnitOfWork unitOfWork)
             existingItem.Quantity += dto.Quantity;
             existingItem.UpdatedAt = DateTime.UtcNow;
         }
-
-        // Save Cart and CartItem together
-        await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task UpdateQuantityAsync(
+    private async Task UpdateQuantityCoreAsync(
         Guid userId,
         Guid cartItemId,
         UpdateCartItemDto dto,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
-        ValidateUserId(userId);
         ArgumentNullException.ThrowIfNull(dto);
 
         Validator.ValidateObject(
@@ -117,23 +163,17 @@ public sealed class CartService(IUnitOfWork unitOfWork)
 
         item.Quantity = dto.Quantity;
         item.UpdatedAt = DateTime.UtcNow;
-
-        await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
-    public async Task RemoveItemAsync(
+    private async Task RemoveItemCoreAsync(
         Guid userId,
         Guid cartItemId,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken)
     {
-        ValidateUserId(userId);
-
         var item = await GetOwnedItemAsync(
             userId, cartItemId, cancellationToken);
 
         unitOfWork.GetRepository<CartItem>().Delete(item);
-
-        await unitOfWork.SaveChangesAsync(cancellationToken);
     }
 
     private async Task<CartItem> GetOwnedItemAsync(
@@ -160,13 +200,9 @@ public sealed class CartService(IUnitOfWork unitOfWork)
         var product = await unitOfWork.GetRepository<Product>()
             .GetByIdAsync(
                 productId,
-                cancellationToken: cancellationToken);
-
-        if (product is null)
-            throw new BusinessException(
+                cancellationToken: cancellationToken) ?? throw new BusinessException(
                 BusinessErrorType.NotFound,
                 "PRODUCT_NOT_FOUND");
-
         if (!product.IsActive)
             throw new BusinessException(
                 BusinessErrorType.Conflict,

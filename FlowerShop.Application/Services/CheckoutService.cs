@@ -31,7 +31,8 @@ public sealed class CheckoutService(
 
         var orderCode = $"FS-{dto.CheckoutRequestId:N}";
 
-        return await unitOfWork.ExecuteInTransactionAsync(
+        return await unitOfWork.ExecuteInLockedTransactionAsync(
+            $"flower-shop:cart:{userId:N}",
             async ct =>
             {
                 // 1. Reject an already used CheckoutRequestId
@@ -41,10 +42,60 @@ public sealed class CheckoutService(
                         x => x.OrderCode == orderCode,
                         cancellationToken: ct);
 
+
+
                 if (existingOrder is not null)
-                    throw new BusinessException(
-                        BusinessErrorType.Conflict,
-                        "CHECKOUT_ALREADY_PROCESSED");
+                {
+                    // Never return another user's order.
+                    if (existingOrder.UserId != userId)
+                        throw new BusinessException(
+                            BusinessErrorType.Conflict,
+                            "CHECKOUT_REQUEST_ID_IN_USE");
+
+                    // Reconstruct the committed order result.
+                    var previousItems = await unitOfWork
+                        .GetRepository<OrderItem>()
+                        .FindAsync(
+                            x => x.OrderId == existingOrder.Id,
+                            cancellationToken: ct);
+
+                    var previousPayment = await unitOfWork
+                        .GetRepository<Payment>()
+                        .GetByAsync(
+                            x => x.OrderId == existingOrder.Id &&
+                                 x.Method == PaymentMethod.CashOnDelivery,
+                            cancellationToken: ct);
+
+                    if (previousPayment is null || previousItems.Count == 0)
+                        throw new InvalidOperationException(
+                            "CHECKOUT_ORDER_DATA_INCOMPLETE");
+
+                    // FIX: Rename resultItems to previousResultItems
+                    var previousResultItems = previousItems
+                        .OrderBy(x => x.ProductId)
+                        .Select(x => new OrderItemDto(
+                            x.ProductId,
+                            x.ProductName,
+                            x.UnitPrice,
+                            x.Quantity,
+                            x.LineTotal))
+                        .ToArray();
+
+                    // Return existing Order without reducing stock.
+                    return new CheckoutResultDto(
+                        existingOrder.Id,
+                        existingOrder.OrderCode,
+                        existingOrder.Status,
+                        previousPayment.Method,
+                        previousPayment.Status,
+                        existingOrder.Subtotal,
+                        existingOrder.ShippingFee,
+                        existingOrder.DiscountAmount,
+                        existingOrder.TotalAmount,
+                        previousResultItems,
+                        existingOrder.CreatedAt);
+                }
+
 
                 // 2. Verify that the shipping address
                 // belongs to the current user
@@ -53,10 +104,7 @@ public sealed class CheckoutService(
                     .GetByAsync(
                         x => x.Id == dto.ShippingAddressId &&
                              x.UserId == userId,
-                        cancellationToken: ct);
-
-                if (address is null)
-                    throw new BusinessException(
+                        cancellationToken: ct) ?? throw new BusinessException(
                         BusinessErrorType.NotFound,
                         "SHIPPING_ADDRESS_NOT_FOUND");
 
@@ -65,10 +113,7 @@ public sealed class CheckoutService(
                     .GetRepository<Cart>()
                     .GetByAsync(
                         x => x.UserId == userId,
-                        cancellationToken: ct);
-
-                if (cart is null)
-                    throw new BusinessException(
+                        cancellationToken: ct) ?? throw new BusinessException(
                         BusinessErrorType.Conflict,
                         "CART_EMPTY");
 
@@ -109,7 +154,7 @@ public sealed class CheckoutService(
                 // 6. Validate products and build snapshots
                 var orderItems = new List<OrderItem>();
 
-                foreach (var cartItem in cartItems)
+                foreach (var cartItem in cartItems.OrderBy(x => x.ProductId))
                 {
                     if (!productLookup.TryGetValue(
                         cartItem.ProductId,

@@ -93,7 +93,9 @@ public sealed class CheckoutService(
                         existingOrder.DiscountAmount,
                         existingOrder.TotalAmount,
                         previousResultItems,
-                        existingOrder.CreatedAt);
+                        existingOrder.CreatedAt,
+                        IsReplay: true);
+
                 }
 
 

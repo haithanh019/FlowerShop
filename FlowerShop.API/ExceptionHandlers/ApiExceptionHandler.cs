@@ -1,11 +1,12 @@
 ﻿
-using System.ComponentModel.DataAnnotations;
 using FlowerShop.Application.Common.Exceptions;
+using FlowerShop.Domain.Common;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
+using System.ComponentModel.DataAnnotations;
 
 namespace FlowerShop.API.ExceptionHandlers;
 
@@ -35,6 +36,8 @@ public sealed class ApiExceptionHandler(
             
             ValidationException
                 => StatusCodes.Status400BadRequest,
+            ResourceLockException
+                => StatusCodes.Status409Conflict,
 
             _ => 0
         };

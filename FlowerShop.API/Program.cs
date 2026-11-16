@@ -3,6 +3,7 @@ using FlowerShop.API.ExceptionHandlers;
 using FlowerShop.API.OData;
 using FlowerShop.API.RateLimiting;
 using FlowerShop.Application;
+using FlowerShop.Infrastructure.Cloudinary;
 using FlowerShop.Infrastructure.DependencyInjection;
 using Microsoft.AspNetCore.OData;
 
@@ -43,6 +44,9 @@ public class Program
             .GetConnectionString("DefaultConnection")
             ?? throw new InvalidOperationException(
                 "Connection string 'DefaultConnection' not found.");
+
+        // Register Cloudinary settings
+        builder.Services.Configure<CloudinarySettings>(builder.Configuration.GetSection("Cloudinary"));
 
         // Register Application
         builder.Services.AddApplication();

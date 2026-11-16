@@ -20,17 +20,17 @@ public static class DependencyInjection
             options.UseSqlServer(connectionString));
 
         // Register Generic Repository
-        services.AddScoped(typeof(IGenericRepository<>),typeof(GenericRepository<>));
+        services.AddScoped(typeof(IGenericRepository<>), typeof(GenericRepository<>));
 
         // Register Read-Only Query Repository
-        services.AddScoped(typeof(IReadOnlyQueryRepository<>),typeof(ReadOnlyQueryRepository<>));
+        services.AddScoped(typeof(IReadOnlyQueryRepository<>), typeof(ReadOnlyQueryRepository<>));
 
         // Register Unit of Work
         services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
 
         // Register Product Stock Repository
         services.AddScoped<IProductStockRepository, ProductStockRepository>();
-
+        services.AddScoped<IImageStorageRepository, CloudinaryImageRepository>();
         return services;
     }
 }

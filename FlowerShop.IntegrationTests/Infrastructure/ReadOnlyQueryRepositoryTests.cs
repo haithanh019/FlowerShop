@@ -2,8 +2,8 @@
 using FlowerShop.Domain.Entities;
 using FlowerShop.Domain.Interfaces;
 using FlowerShop.Domain.Interfaces.Repositories;
-using FlowerShop.Infrastructure;
 using FlowerShop.Infrastructure.Data;
+using FlowerShop.Infrastructure.DependencyInjection;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;

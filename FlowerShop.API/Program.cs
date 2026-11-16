@@ -3,7 +3,7 @@ using FlowerShop.API.ExceptionHandlers;
 using FlowerShop.API.OData;
 using FlowerShop.API.RateLimiting;
 using FlowerShop.Application;
-using FlowerShop.Infrastructure;
+using FlowerShop.Infrastructure.DependencyInjection;
 using Microsoft.AspNetCore.OData;
 
 namespace FlowerShop.API;

@@ -5,7 +5,7 @@ using FlowerShop.Infrastructure.Repositories;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 
-namespace FlowerShop.Infrastructure;
+namespace FlowerShop.Infrastructure.DependencyInjection;
 
 public static class DependencyInjection
 {
@@ -20,17 +20,16 @@ public static class DependencyInjection
             options.UseSqlServer(connectionString));
 
         // Register Generic Repository
-        services.AddScoped(
-            typeof(IGenericRepository<>),
-            typeof(GenericRepository<>));
+        services.AddScoped(typeof(IGenericRepository<>),typeof(GenericRepository<>));
 
         // Register Read-Only Query Repository
-        services.AddScoped(
-            typeof(IReadOnlyQueryRepository<>),
-            typeof(ReadOnlyQueryRepository<>));
+        services.AddScoped(typeof(IReadOnlyQueryRepository<>),typeof(ReadOnlyQueryRepository<>));
 
         // Register Unit of Work
         services.AddScoped<IUnitOfWork, UnitOfWork.UnitOfWork>();
+
+        // Register Product Stock Repository
+        services.AddScoped<IProductStockRepository, ProductStockRepository>();
 
         return services;
     }

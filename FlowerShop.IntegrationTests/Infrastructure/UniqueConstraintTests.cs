@@ -1,6 +1,5 @@
 ﻿using FlowerShop.Domain.Entities;
 using FlowerShop.Domain.Interfaces;
-using FlowerShop.Infrastructure;
 using FlowerShop.Infrastructure.Data;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
@@ -9,6 +8,7 @@ using Xunit;
 using FlowerShop.API.ExceptionHandlers;
 using Microsoft.AspNetCore.Http;
 using System.Text.Json;
+using FlowerShop.Infrastructure.DependencyInjection;
 
 namespace FlowerShop.IntegrationTests.Infrastructure;
 

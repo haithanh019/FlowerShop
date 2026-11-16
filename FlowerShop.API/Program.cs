@@ -1,44 +1,89 @@
+using FlowerShop.API.Authentication;
+using FlowerShop.API.ExceptionHandlers;
+using FlowerShop.API.OData;
+using FlowerShop.API.RateLimiting;
+using FlowerShop.Application;
+using FlowerShop.Infrastructure.Cloudinary;
+using FlowerShop.Infrastructure.DependencyInjection;
+using Microsoft.AspNetCore.OData;
 
-using FlowerShop.Infrastructure;
+namespace FlowerShop.API;
 
-namespace FlowerShop.API
+public class Program
 {
-    public class Program
+    public static void Main(string[] args)
     {
-        public static void Main(string[] args)
-        {
-            var builder = WebApplication.CreateBuilder(args);
+        var builder = WebApplication.CreateBuilder(args);
 
-            // Add controllers
-            builder.Services.AddControllers();
-
-            // Get database connection string
-            var connectionString = builder.Configuration
-                .GetConnectionString("DefaultConnection")
-                ?? throw new InvalidOperationException(
-                    "Connection string 'DefaultConnection' not found.");
-
-            // Register Infrastructure services
-            builder.Services.AddInfrastructure(connectionString);
-
-            // OpenAPI
-            builder.Services.AddOpenApi();
-
-            var app = builder.Build();
-
-            // HTTP request pipeline
-            if (app.Environment.IsDevelopment())
+        // Register Controllers and OData
+        builder.Services
+            .AddControllers()
+            .AddOData(options =>
             {
-                app.MapOpenApi();
-            }
+                options
+                    .Select()
+                    .Filter()
+                    .OrderBy()
+                    .Count()
+                    .SetMaxTop(100)
+                    .AddRouteComponents(
+                        "odata/v1",
+                        EdmModelFactory.Create());
+            });
 
-            app.UseHttpsRedirection();
+        // Register Rate Limiting
+        builder.Services.AddApiRateLimiting();
 
-            app.UseAuthorization();
+        // Register Exception Handling
+        builder.Services.AddProblemDetails();
+        builder.Services.AddExceptionHandler<ApiExceptionHandler>();
+        builder.Services.AddJwtAuthentication(builder.Configuration);
 
-            app.MapControllers();
+        // Get database connection string
+        var connectionString = builder.Configuration
+            .GetConnectionString("DefaultConnection")
+            ?? throw new InvalidOperationException(
+                "Connection string 'DefaultConnection' not found.");
 
-            app.Run();
+        // Register Cloudinary settings
+        builder.Services.Configure<CloudinarySettings>(builder.Configuration.GetSection("Cloudinary"));
+
+        // Register Application
+        builder.Services.AddApplication();
+
+        // Register Infrastructure
+        builder.Services.AddInfrastructure(connectionString);
+
+        // Register OpenAPI
+        builder.Services.AddOpenApi();
+
+        var app = builder.Build();
+
+
+        // Register Exception Handling
+        app.UseExceptionHandler(new ExceptionHandlerOptions
+        {
+            AllowStatusCode404Response = true
+        });
+
+        // HTTP request pipeline
+        if (app.Environment.IsDevelopment())
+        {
+            app.MapOpenApi();
         }
+
+        app.UseHttpsRedirection();
+
+        app.UseRouting();
+
+        app.UseRateLimiter();
+
+        app.UseAuthentication();
+
+        app.UseAuthorization();
+
+        app.MapControllers();
+
+        app.Run();
     }
 }

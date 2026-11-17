@@ -1,5 +1,6 @@
 ﻿using System.ComponentModel.DataAnnotations;
 using FlowerShop.Application.Common.Exceptions;
+using FlowerShop.Application.Common.Idempotency;
 using FlowerShop.Application.DTOs.Orders;
 using FlowerShop.Application.Interfaces.Services;
 using FlowerShop.Domain.Entities;
@@ -30,19 +31,18 @@ public sealed class CheckoutService(
             validateAllProperties: true);
 
         var orderCode = $"FS-{dto.CheckoutRequestId:N}";
+        var fingerprint = CheckoutRequestFingerprint.Compute(dto);
 
         return await unitOfWork.ExecuteInLockedTransactionAsync(
             $"flower-shop:cart:{userId:N}",
             async ct =>
             {
-                // 1. Reject an already used CheckoutRequestId
+                // 1. Replays must match the original, committed payload.
                 var existingOrder = await unitOfWork
                     .GetRepository<Order>()
                     .GetByAsync(
                         x => x.OrderCode == orderCode,
                         cancellationToken: ct);
-
-
 
                 if (existingOrder is not null)
                 {
@@ -51,6 +51,22 @@ public sealed class CheckoutService(
                         throw new BusinessException(
                             BusinessErrorType.Conflict,
                             "CHECKOUT_REQUEST_ID_IN_USE");
+
+                    // Legacy Orders do not contain sufficient request data
+                    // to safely distinguish genuine replays from mismatches.
+                    if (existingOrder.CheckoutRequestFingerprint is null)
+                        throw new BusinessException(
+                            BusinessErrorType.Conflict,
+                            "CHECKOUT_REQUEST_NOT_VERIFIABLE");
+
+                    if (!StringComparer.Ordinal.Equals(
+                        existingOrder.CheckoutRequestFingerprint,
+                        fingerprint))
+                    {
+                        throw new BusinessException(
+                            BusinessErrorType.Conflict,
+                            "CHECKOUT_REQUEST_MISMATCH");
+                    }
 
                     // Reconstruct the committed order result.
                     var previousItems = await unitOfWork
@@ -70,7 +86,6 @@ public sealed class CheckoutService(
                         throw new InvalidOperationException(
                             "CHECKOUT_ORDER_DATA_INCOMPLETE");
 
-                    // FIX: Rename resultItems to previousResultItems
                     var previousResultItems = previousItems
                         .OrderBy(x => x.ProductId)
                         .Select(x => new OrderItemDto(
@@ -81,7 +96,7 @@ public sealed class CheckoutService(
                             x.LineTotal))
                         .ToArray();
 
-                    // Return existing Order without reducing stock.
+                    // Do not reduce stock on replay.
                     return new CheckoutResultDto(
                         existingOrder.Id,
                         existingOrder.OrderCode,
@@ -95,12 +110,9 @@ public sealed class CheckoutService(
                         previousResultItems,
                         existingOrder.CreatedAt,
                         IsReplay: true);
-
                 }
 
-
-                // 2. Verify that the shipping address
-                // belongs to the current user
+                // 2. Verify address ownership.
                 var address = await unitOfWork
                     .GetRepository<UserAddress>()
                     .GetByAsync(
@@ -110,7 +122,7 @@ public sealed class CheckoutService(
                         BusinessErrorType.NotFound,
                         "SHIPPING_ADDRESS_NOT_FOUND");
 
-                // 3. Find the user's Cart
+                // 3. Find the user's Cart.
                 var cart = await unitOfWork
                     .GetRepository<Cart>()
                     .GetByAsync(
@@ -119,10 +131,8 @@ public sealed class CheckoutService(
                         BusinessErrorType.Conflict,
                         "CART_EMPTY");
 
-                // 4. Load CartItems with tracking
-                var itemRepository =
-                    unitOfWork.GetRepository<CartItem>();
-
+                // 4. Load CartItems with tracking.
+                var itemRepository = unitOfWork.GetRepository<CartItem>();
                 var cartItems = await itemRepository.FindAsync(
                     x => x.CartId == cart.Id,
                     trackChanges: true,
@@ -138,7 +148,7 @@ public sealed class CheckoutService(
                         BusinessErrorType.Conflict,
                         "CART_INVALID_QUANTITY");
 
-                // 5. Load Product information in one query
+                // 5. Load Product information in one query.
                 var productIds = cartItems
                     .Select(x => x.ProductId)
                     .Distinct()
@@ -150,17 +160,14 @@ public sealed class CheckoutService(
                         x => productIds.Contains(x.Id),
                         cancellationToken: ct);
 
-                var productLookup = products.ToDictionary(
-                    x => x.Id);
+                var productLookup = products.ToDictionary(x => x.Id);
 
-                // 6. Validate products and build snapshots
+                // 6. Validate products and build immutable snapshots.
                 var orderItems = new List<OrderItem>();
-
                 foreach (var cartItem in cartItems.OrderBy(x => x.ProductId))
                 {
                     if (!productLookup.TryGetValue(
-                        cartItem.ProductId,
-                        out var product))
+                        cartItem.ProductId, out var product))
                     {
                         throw new BusinessException(
                             BusinessErrorType.Conflict,
@@ -186,61 +193,47 @@ public sealed class CheckoutService(
                     });
                 }
 
-                // 7. Calculate amounts on the server
+                // 7. Pricing policy for COD MVP.
                 var subtotal = orderItems.Sum(
                     x => x.UnitPrice * x.Quantity);
-
-                // Temporary MVP pricing policy:
-                // no shipping fee or voucher discount yet
                 const decimal shippingFee = 0m;
                 const decimal discountAmount = 0m;
+                var totalAmount = subtotal + shippingFee - discountAmount;
 
-                var totalAmount =
-                    subtotal + shippingFee - discountAmount;
-
-                // 8. Decrease stock atomically
-                // Consistent ordering reduces deadlock risk
-                foreach (var item in orderItems
-                    .OrderBy(x => x.ProductId))
+                // 8. Decrease stock atomically in a consistent order.
+                foreach (var item in orderItems.OrderBy(x => x.ProductId))
                 {
-                    var decreased =
-                        await stockRepository.TryDecreaseAsync(
-                            item.ProductId,
-                            item.Quantity,
-                            ct);
-
+                    var decreased = await stockRepository.TryDecreaseAsync(
+                        item.ProductId, item.Quantity, ct);
                     if (!decreased)
                         throw new BusinessException(
                             BusinessErrorType.Conflict,
                             "INSUFFICIENT_STOCK");
                 }
 
-                // 9. Create the Order with address snapshot
+                // 9. Persist the request fingerprint with the Order.
                 var order = new Order
                 {
                     UserId = userId,
                     OrderCode = orderCode,
+                    CheckoutRequestFingerprint = fingerprint,
                     Status = OrderStatus.Pending,
 
                     RecipientName = address.RecipientName,
                     RecipientPhone = address.RecipientPhone,
-
                     ShippingAddressLine = address.AddressLine,
                     ShippingWard = address.Ward,
                     ShippingDistrict = address.District,
                     ShippingProvince = address.Province,
                     ShippingCountryCode = address.CountryCode,
                     ShippingPostalCode = address.PostalCode,
-
                     Note = dto.Note,
 
                     Subtotal = subtotal,
                     ShippingFee = shippingFee,
                     DiscountAmount = discountAmount,
                     TotalAmount = totalAmount,
-
                     Items = orderItems,
-
                     Payments =
                     [
                         new Payment
@@ -256,16 +249,12 @@ public sealed class CheckoutService(
                 await unitOfWork.GetRepository<Order>()
                     .AddAsync(order, ct);
 
-                // 10. Clear checked-out CartItems
+                // 10. Clear checked-out CartItems.
                 foreach (var cartItem in cartItems)
-                {
                     itemRepository.Delete(cartItem);
-                }
 
-                // UnitOfWork saves and commits
-                // after this delegate completes successfully
-
-                // 11. Prepare the response
+                // UnitOfWork saves all tracked entities and commits.
+                // 11. Build result from saved snapshots.
                 var resultItems = orderItems
                     .Select(x => new OrderItemDto(
                         x.ProductId,

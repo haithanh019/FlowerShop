@@ -40,6 +40,11 @@ public sealed class OrderConfiguration
             .HasMaxLength(40)
             .IsRequired();
 
+        builder.Property(x => x.CheckoutRequestFingerprint)
+            .HasMaxLength(64)
+            .IsUnicode(false)
+            .IsRequired(false);
+
         builder.Property(x => x.Status)
             .HasConversion<int>()
             .IsRequired();

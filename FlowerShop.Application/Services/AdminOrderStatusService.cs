@@ -51,10 +51,7 @@ public sealed class AdminOrderStatusService(
                         x => x.Id == adminUserId &&
                              x.IsActive &&
                              x.Role == UserRole.Admin,
-                        cancellationToken: ct);
-
-                if (admin is null)
-                    throw new BusinessException(
+                        cancellationToken: ct) ?? throw new BusinessException(
                         BusinessErrorType.Unauthorized,
                         "ADMIN_ACCESS_REQUIRED");
 
@@ -64,10 +61,7 @@ public sealed class AdminOrderStatusService(
                     .GetByIdAsync(
                         orderId,
                         trackChanges: true,
-                        cancellationToken: ct);
-
-                if (order is null)
-                    throw new BusinessException(
+                        cancellationToken: ct) ?? throw new BusinessException(
                         BusinessErrorType.NotFound,
                         "ORDER_NOT_FOUND");
 
@@ -81,6 +75,26 @@ public sealed class AdminOrderStatusService(
                         BusinessErrorType.Conflict,
                         "INVALID_ORDER_STATUS_TRANSITION");
                 }
+
+
+                // Validate payment before allowing order progression.
+                // The MVP supports one COD payment per order.
+                var payments = await unitOfWork
+                    .GetRepository<Payment>()
+                    .FindAsync(
+                        x => x.OrderId == orderId,
+                        cancellationToken: ct);
+
+                if (payments.Count != 1 ||
+                    payments[0].Method != PaymentMethod.CashOnDelivery ||
+                    payments[0].Status is not (
+                        PaymentStatus.Pending or PaymentStatus.Paid))
+                {
+                    throw new BusinessException(
+                        BusinessErrorType.Conflict,
+                        "ORDER_PAYMENT_STATE_INVALID");
+                }
+
 
                 // 6. Update only the tracked Order.
                 var previousStatus = order.Status;

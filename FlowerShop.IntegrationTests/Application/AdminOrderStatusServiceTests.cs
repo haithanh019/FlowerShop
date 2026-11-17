@@ -191,6 +191,56 @@ public sealed class AdminOrderStatusServiceTests
             Assert.Equal("ORDER_NOT_FOUND", notFound.Message);
 
             // Valid progression:
+
+
+            // Invalid payment states must block order progression.
+            var invalidPaymentStatuses = new[]
+            {
+                PaymentStatus.Failed,
+                PaymentStatus.Cancelled,
+                PaymentStatus.Refunded
+            };
+
+            foreach (var invalidPaymentStatus in invalidPaymentStatuses)
+            {
+                await db.Payments
+                    .Where(x => x.OrderId == order.Id)
+                    .ExecuteUpdateAsync(setters => setters
+                        .SetProperty(
+                            x => x.Status,
+                            invalidPaymentStatus));
+
+                var paymentError =
+                    await Assert.ThrowsAsync<BusinessException>(
+                        () => service.UpdateStatusAsync(
+                            admin.Id,
+                            order.Id,
+                            OrderStatus.Confirmed));
+
+                Assert.Equal(
+                    "ORDER_PAYMENT_STATE_INVALID",
+                    paymentError.Message);
+
+                var currentOrderStatus = await db.Orders
+                    .AsNoTracking()
+                    .Where(x => x.Id == order.Id)
+                    .Select(x => x.Status)
+                    .SingleAsync();
+
+                Assert.Equal(
+                    OrderStatus.Pending,
+                    currentOrderStatus);
+            }
+
+            // Restore a valid COD payment state
+            // for the existing progression tests.
+            await db.Payments
+                .Where(x => x.OrderId == order.Id)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(
+                        x => x.Status,
+                        PaymentStatus.Pending));
+
             // Pending -> Confirmed -> Preparing
             // -> Shipping -> Delivered
             var expectedStatuses = new[]

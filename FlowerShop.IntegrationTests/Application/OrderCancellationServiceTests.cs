@@ -264,8 +264,14 @@ public sealed class OrderCancellationServiceTests
                 AttemptAsync(() => CancelCustomer(bob.Id, bobPending.Id)),
                 AttemptAsync(() => CancelAdmin(admin.Id, bobPending.Id)));
 
-            Assert.Single(attempts.Where(x => x.Result is not null));
-            var error = Assert.Single(attempts.Where(x => x.Error is not null)).Error;
+            Assert.Single(
+                attempts,
+                x => x.Result is not null);
+
+            var error = Assert.Single(
+                attempts,
+                x => x.Error is not null).Error;
+
             var conflict = Assert.IsType<BusinessException>(error);
             Assert.Equal("ORDER_ALREADY_CANCELLED", conflict.Message);
             Assert.Equal(9, await Stock(rose.Id));

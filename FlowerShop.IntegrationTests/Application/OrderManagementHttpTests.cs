@@ -593,6 +593,210 @@ public sealed class OrderManagementHttpTests
                 await OrderStatusAsync(bobPrivate.Id));
             Assert.Equal(PaymentStatus.Pending,
                 await PaymentStatusAsync(bobPrivate.Id));
+
+
+            // =====================================================
+            // 12. SECURITY AUDIT: Order ownership and token validity.
+            // =====================================================
+
+            var stockBeforeSecurityAudit =
+                await StockAsync(rose.Id);
+
+            // 12.1. Customers must not read another user's Order.
+            using (var hiddenFromAlice = await SendAsync(
+                HttpMethod.Get,
+                $"{customerBase}/{bobPrivate.Id}",
+                aliceToken))
+            {
+                Assert.Equal(
+                    HttpStatusCode.NotFound,
+                    hiddenFromAlice.StatusCode);
+            }
+
+            using (var hiddenFromBob = await SendAsync(
+                HttpMethod.Get,
+                $"{customerBase}/{progress.Id}",
+                bobToken))
+            {
+                Assert.Equal(
+                    HttpStatusCode.NotFound,
+                    hiddenFromBob.StatusCode);
+            }
+
+            // The legitimate owner can read the same Order.
+            await ExpectStatusAsync(
+                HttpMethod.Get,
+                $"{customerBase}/{bobPrivate.Id}",
+                bobToken,
+                HttpStatusCode.OK);
+
+            // Customer history must not reveal another user's Order.
+            using (var historyResponse = await SendAsync(
+                HttpMethod.Get,
+                customerBase,
+                aliceToken))
+            {
+                Assert.Equal(
+                    HttpStatusCode.OK,
+                    historyResponse.StatusCode);
+
+                var history = await historyResponse.Content
+                    .ReadFromJsonAsync<OrderHistoryDto>();
+
+                var result = Assert.IsType<OrderHistoryDto>(
+                    history);
+
+                Assert.DoesNotContain(
+                    result.Items,
+                    x => x.OrderId == bobPrivate.Id);
+            }
+
+            // 12.2. A modified JWT signature must be rejected.
+            var tokenParts = aliceToken.Split('.');
+
+            Assert.Equal(3, tokenParts.Length);
+            Assert.NotEmpty(tokenParts[2]);
+
+            tokenParts[2] =
+                (tokenParts[2][0] == 'A' ? "B" : "A") +
+                tokenParts[2][1..];
+
+            var tamperedToken = string.Join(".", tokenParts);
+
+            await ExpectStatusAsync(
+                HttpMethod.Get,
+                customerBase,
+                tamperedToken,
+                HttpStatusCode.Unauthorized);
+
+            await ExpectStatusAsync(
+                HttpMethod.Post,
+                CustomerCancelUrl(bobPrivate.Id),
+                tamperedToken,
+                HttpStatusCode.Unauthorized);
+
+            // 12.3. Disabling a Customer invalidates their old
+            // token for every protected Order endpoint.
+            await db.Users
+                .Where(x => x.Id == alice.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.IsActive, false));
+
+            await ExpectStatusAsync(
+                HttpMethod.Get,
+                customerBase,
+                aliceToken,
+                HttpStatusCode.Unauthorized);
+
+            await ExpectStatusAsync(
+                HttpMethod.Post,
+                CustomerCancelUrl(bobPrivate.Id),
+                aliceToken,
+                HttpStatusCode.Unauthorized);
+
+            await ExpectStatusAsync(
+                HttpMethod.Post,
+                $"{customerBase}/checkout",
+                aliceToken,
+                HttpStatusCode.Unauthorized,
+                new { });
+
+            // 12.4. Changing Customer role invalidates
+            // the role claim in their existing JWT.
+            await db.Users
+                .Where(x => x.Id == alice.Id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.IsActive, true)
+                    .SetProperty(x => x.Role, UserRole.Admin));
+
+            await ExpectStatusAsync(
+                HttpMethod.Get,
+                customerBase,
+                aliceToken,
+                HttpStatusCode.Unauthorized);
+
+            // Restore the legitimate Customer account.
+            await db.Users
+                .Where(x => x.Id == alice.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.Role, UserRole.Customer));
+
+            await ExpectStatusAsync(
+                HttpMethod.Get,
+                customerBase,
+                aliceToken,
+                HttpStatusCode.OK);
+
+            // 12.5. Disabling an Admin invalidates their JWT
+            // for status changes, cancellation and COD settlement.
+            await db.Users
+                .Where(x => x.Id == admin.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.IsActive, false));
+
+            await ExpectStatusAsync(
+                HttpMethod.Patch,
+                StatusUrl(bobPrivate.Id),
+                adminToken,
+                HttpStatusCode.Unauthorized,
+                new
+                {
+                    status = (int)OrderStatus.Confirmed
+                });
+
+            await ExpectStatusAsync(
+                HttpMethod.Post,
+                AdminCancelUrl(bobPrivate.Id),
+                adminToken,
+                HttpStatusCode.Unauthorized);
+
+            await ExpectStatusAsync(
+                HttpMethod.Post,
+                ConfirmCodUrl(bobPrivate.Id),
+                adminToken,
+                HttpStatusCode.Unauthorized);
+
+            // 12.6. Downgrading an Admin invalidates the
+            // previous Admin role claim.
+            await db.Users
+                .Where(x => x.Id == admin.Id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.IsActive, true)
+                    .SetProperty(x => x.Role, UserRole.Customer));
+
+            await ExpectStatusAsync(
+                HttpMethod.Post,
+                ConfirmCodUrl(bobPrivate.Id),
+                adminToken,
+                HttpStatusCode.Unauthorized);
+
+            // Restore the Admin role and verify authorization.
+            await db.Users
+                .Where(x => x.Id == admin.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.Role, UserRole.Admin));
+
+            // Authentication succeeds again, but settlement
+            // remains forbidden by the Order lifecycle policy.
+            await ExpectStatusAsync(
+                HttpMethod.Post,
+                ConfirmCodUrl(bobPrivate.Id),
+                adminToken,
+                HttpStatusCode.Conflict);
+
+            // 12.7. All unauthorized attempts must be read-only.
+            Assert.Equal(
+                OrderStatus.Pending,
+                await OrderStatusAsync(bobPrivate.Id));
+
+            Assert.Equal(
+                PaymentStatus.Pending,
+                await PaymentStatusAsync(bobPrivate.Id));
+
+            Assert.Equal(
+                stockBeforeSecurityAudit,
+                await StockAsync(rose.Id));
+
         }
         finally
         {

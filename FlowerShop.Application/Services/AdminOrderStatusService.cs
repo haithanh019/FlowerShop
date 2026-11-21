@@ -113,6 +113,24 @@ public sealed class AdminOrderStatusService(
                         "INVALID_ORDER_ITEMS");
                 }
 
+
+                // Delivered requires confirmed COD collection.
+                // Do not mark an Order as delivered while COD
+                // is unpaid or PaidAt is missing.
+                if (targetStatus == OrderStatus.Delivered &&
+                    !CodPaymentLifecyclePolicy.CanMarkDelivered(
+                        order.Status,
+                        payments[0].Method,
+                        payments[0].Status,
+                        payments[0].PaidAt))
+                {
+                    throw new BusinessException(
+                        BusinessErrorType.Conflict,
+                        "COD_PAYMENT_NOT_SETTLED");
+                }
+
+
+
                 // 6. Update only the tracked Order.
                 var previousStatus = order.Status;
                 var now = DateTime.UtcNow;

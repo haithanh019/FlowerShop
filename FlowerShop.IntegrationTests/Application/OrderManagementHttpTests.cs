@@ -287,6 +287,8 @@ public sealed class OrderManagementHttpTests
                 $"{adminBase}/{orderId}/cancel";
             string CustomerCancelUrl(Guid orderId) =>
                 $"{customerBase}/{orderId}/cancel";
+            string ConfirmCodUrl(Guid orderId) =>
+                $"{adminBase}/{orderId}/payments/cod/confirm";
 
             // 1. Authentication and role authorization.
             await ExpectStatusAsync(HttpMethod.Patch,
@@ -308,6 +310,18 @@ public sealed class OrderManagementHttpTests
                 HttpStatusCode.Forbidden);
             await ExpectStatusAsync(HttpMethod.Post,
                 CustomerCancelUrl(customerCancel.Id), adminToken,
+                HttpStatusCode.Forbidden);
+            // COD confirmation requires authenticated Admin.
+            await ExpectStatusAsync(
+                HttpMethod.Post,
+                ConfirmCodUrl(progress.Id),
+                null,
+                HttpStatusCode.Unauthorized);
+
+            await ExpectStatusAsync(
+                HttpMethod.Post,
+                ConfirmCodUrl(progress.Id),
+                aliceToken,
                 HttpStatusCode.Forbidden);
 
             // 2. Model validation and non-existent order.
@@ -362,6 +376,66 @@ public sealed class OrderManagementHttpTests
             var previous = OrderStatus.Pending;
             foreach (var next in states)
             {
+
+
+                if (next == OrderStatus.Delivered)
+                {
+                    // Delivery without COD collection must fail.
+                    await ExpectStatusAsync(
+                        HttpMethod.Patch,
+                        StatusUrl(progress.Id),
+                        adminToken,
+                        HttpStatusCode.Conflict,
+                        new
+                        {
+                            status = (int)OrderStatus.Delivered
+                        });
+
+                    Assert.Equal(
+                        OrderStatus.Shipping,
+                        await OrderStatusAsync(progress.Id));
+
+                    // Admin confirms COD collection.
+                    using var settlementResponse = await SendAsync(
+                        HttpMethod.Post,
+                        ConfirmCodUrl(progress.Id),
+                        adminToken);
+
+                    Assert.Equal(
+                        HttpStatusCode.OK,
+                        settlementResponse.StatusCode);
+
+                    var settlement = await settlementResponse.Content
+                        .ReadFromJsonAsync<
+                            CodPaymentSettlementResultDto>();
+
+                    var paymentResult =
+                        Assert.IsType<
+                            CodPaymentSettlementResultDto>(
+                            settlement);
+
+                    Assert.Equal(
+                        progress.Id,
+                        paymentResult.OrderId);
+
+                    Assert.Equal(
+                        PaymentStatus.Paid,
+                        paymentResult.Status);
+
+                    Assert.Equal(
+                        PaymentStatus.Paid,
+                        await PaymentStatusAsync(progress.Id));
+
+                    // A second confirmation cannot settle twice.
+                    await ExpectStatusAsync(
+                        HttpMethod.Post,
+                        ConfirmCodUrl(progress.Id),
+                        adminToken,
+                        HttpStatusCode.Conflict);
+                }
+
+
+
                 var result = await ExpectResultAsync(
                     HttpMethod.Patch, StatusUrl(progress.Id), adminToken,
                     previous, next, new { status = (int)next });
@@ -377,8 +451,17 @@ public sealed class OrderManagementHttpTests
             await ExpectStatusAsync(HttpMethod.Post,
                 AdminCancelUrl(progress.Id), adminToken,
                 HttpStatusCode.Conflict);
-            Assert.Equal(PaymentStatus.Pending,
+
+            Assert.Equal(
+                PaymentStatus.Paid,
                 await PaymentStatusAsync(progress.Id));
+
+            Assert.NotNull(
+                await db.Payments.AsNoTracking()
+                    .Where(x => x.OrderId == progress.Id)
+                    .Select(x => x.PaidAt)
+                    .SingleAsync());
+
             Assert.Equal(5, await StockAsync(rose.Id));
 
             // 6. Paid COD cannot be cancelled automatically.

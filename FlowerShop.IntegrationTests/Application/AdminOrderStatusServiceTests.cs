@@ -50,6 +50,9 @@ public sealed class AdminOrderStatusServiceTests
         var service = scope.ServiceProvider
             .GetRequiredService<IAdminOrderStatusService>();
 
+        var codService = scope.ServiceProvider
+            .GetRequiredService<ICodPaymentSettlementService>();
+
         Assert.Contains(
             await db.Database.GetAppliedMigrationsAsync(),
             x => x.EndsWith("_InitialCreate"));
@@ -368,6 +371,79 @@ public sealed class AdminOrderStatusServiceTests
 
             foreach (var next in expectedStatuses)
             {
+
+                if (next == OrderStatus.Delivered)
+                {
+                    // Shipping + Pending cannot become Delivered.
+                    var unpaid = await Assert.ThrowsAsync<
+                        BusinessException>(() =>
+                        service.UpdateStatusAsync(
+                            admin.Id,
+                            order.Id,
+                            OrderStatus.Delivered));
+
+                    Assert.Equal(
+                        "COD_PAYMENT_NOT_SETTLED",
+                        unpaid.Message);
+
+                    Assert.Equal(
+                        OrderStatus.Shipping,
+                        await db.Orders.AsNoTracking()
+                            .Where(x => x.Id == order.Id)
+                            .Select(x => x.Status)
+                            .SingleAsync());
+
+                    // A Paid status without PaidAt is invalid.
+                    await db.Payments
+                        .Where(x => x.OrderId == order.Id)
+                        .ExecuteUpdateAsync(s => s.SetProperty(
+                            x => x.Status,
+                            PaymentStatus.Paid));
+
+                    var missingPaidAt = await Assert.ThrowsAsync<
+                        BusinessException>(() =>
+                        service.UpdateStatusAsync(
+                            admin.Id,
+                            order.Id,
+                            OrderStatus.Delivered));
+
+                    Assert.Equal(
+                        "COD_PAYMENT_NOT_SETTLED",
+                        missingPaidAt.Message);
+
+                    // Restore Pending before legitimate settlement.
+                    await db.Payments
+                        .Where(x => x.OrderId == order.Id)
+                        .ExecuteUpdateAsync(s => s.SetProperty(
+                            x => x.Status,
+                            PaymentStatus.Pending));
+
+                    db.ChangeTracker.Clear();
+
+                    // Confirm that COD has actually been collected.
+                    var settlement =
+                        await codService.ConfirmCollectedAsync(
+                            admin.Id,
+                            order.Id);
+
+                    Assert.Equal(
+                        PaymentStatus.Paid,
+                        settlement.Status);
+
+                    Assert.Equal(
+                        DateTimeKind.Utc,
+                        settlement.PaidAtUtc.Kind);
+
+                    Assert.Equal(
+                        PaymentStatus.Paid,
+                        await db.Payments.AsNoTracking()
+                            .Where(x => x.OrderId == order.Id)
+                            .Select(x => x.Status)
+                            .SingleAsync());
+                }
+
+
+
                 var result = await service.UpdateStatusAsync(
                     admin.Id,
                     order.Id,
@@ -415,8 +491,17 @@ public sealed class AdminOrderStatusServiceTests
                 .SingleAsync();
 
             Assert.Equal(
-                PaymentStatus.Pending,
+                PaymentStatus.Paid,
                 paymentStatus);
+
+            var paidAt = await db.Payments
+                .AsNoTracking()
+                .Where(x => x.OrderId == order.Id)
+                .Select(x => x.PaidAt)
+                .SingleAsync();
+
+            Assert.NotNull(paidAt);
+
 
             Assert.Equal(
                 OrderStatus.Delivered,

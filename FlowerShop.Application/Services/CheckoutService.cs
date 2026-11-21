@@ -202,12 +202,53 @@ public sealed class CheckoutService(
                     });
                 }
 
+
                 // 7. Pricing policy for COD MVP.
-                var subtotal = orderItems.Sum(
-                    x => x.UnitPrice * x.Quantity);
+                // SQL decimal(18,2) supports up to this amount.
+                const decimal maxStoredAmount =
+                    9_999_999_999_999_999.99m;
+
+                decimal subtotal = 0m;
+
+                try
+                {
+                    foreach (var item in orderItems)
+                    {
+                        var lineTotal = checked(
+                            item.UnitPrice * item.Quantity);
+
+                        subtotal = checked(
+                            subtotal + lineTotal);
+
+                        if (subtotal > maxStoredAmount)
+                        {
+                            throw new BusinessException(
+                                BusinessErrorType.Conflict,
+                                "CHECKOUT_TOTAL_OUT_OF_RANGE");
+                        }
+                    }
+                }
+                catch (OverflowException)
+                {
+                    throw new BusinessException(
+                        BusinessErrorType.Conflict,
+                        "CHECKOUT_TOTAL_OUT_OF_RANGE");
+                }
+
                 const decimal shippingFee = 0m;
                 const decimal discountAmount = 0m;
-                var totalAmount = subtotal + shippingFee - discountAmount;
+
+                var totalAmount = subtotal +
+                    shippingFee - discountAmount;
+
+                if (totalAmount <= 0m ||
+                    totalAmount > maxStoredAmount)
+                {
+                    throw new BusinessException(
+                        BusinessErrorType.Conflict,
+                        "CHECKOUT_TOTAL_OUT_OF_RANGE");
+                }
+
 
                 // 8. Decrease stock atomically in a consistent order.
                 foreach (var item in orderItems.OrderBy(x => x.ProductId))

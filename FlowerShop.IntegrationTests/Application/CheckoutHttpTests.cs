@@ -246,6 +246,60 @@ public class CheckoutHttpTests
                 .Where(x => x.Id == rose.Id)
                 .Select(x => x.StockQuantity).SingleAsync());
 
+
+
+            // Reject an Order total exceeding SQL decimal(18,2).
+            // This must happen before any stock deduction.
+            await db.Products
+                .Where(x => x.Id == rose.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.Price,
+                    9_999_999_999_999_999.99m));
+
+            using (var overflowResponse =
+                await client.PostAsJsonAsync(url, request))
+            {
+                Assert.Equal(
+                    HttpStatusCode.Conflict,
+                    overflowResponse.StatusCode);
+
+                var problem = await overflowResponse.Content
+                    .ReadFromJsonAsync<
+                        Microsoft.AspNetCore.Mvc.ProblemDetails>();
+
+                Assert.Equal(
+                    "CHECKOUT_TOTAL_OUT_OF_RANGE",
+                    Assert.IsType<
+                        Microsoft.AspNetCore.Mvc.ProblemDetails>(
+                        problem).Detail);
+            }
+
+            // No Order, Payment, stock or Cart mutation.
+            Assert.False(await db.Orders.AsNoTracking()
+                .AnyAsync(x => x.UserId == alice.Id));
+
+            Assert.Equal(2, await db.CartItems.AsNoTracking()
+                .CountAsync(x => x.CartId == cart.Id));
+
+            Assert.Equal(6, await db.Products.AsNoTracking()
+                .Where(x => x.Id == rose.Id)
+                .Select(x => x.StockQuantity)
+                .SingleAsync());
+
+            Assert.Equal(1, await db.Products.AsNoTracking()
+                .Where(x => x.Id == tulip.Id)
+                .Select(x => x.StockQuantity)
+                .SingleAsync());
+
+            // Restore the valid Product price.
+            await db.Products
+                .Where(x => x.Id == rose.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.Price,
+                    120000m));
+
+            db.ChangeTracker.Clear();
+
             // 7. Successful COD checkout -> 201.
             var created = await ExpectResultAsync(
                 request, HttpStatusCode.Created);
@@ -341,6 +395,108 @@ public class CheckoutHttpTests
             Assert.Equal(4, await db.Products.AsNoTracking()
                 .Where(x => x.Id == rose.Id)
                 .Select(x => x.StockQuantity).SingleAsync());
+
+
+            // A replay must reject an inconsistent stored Payment.
+            await db.Payments
+                .Where(x => x.OrderId == created.OrderId)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.Amount,
+                    319999m));
+
+            using (var invalidPaymentResponse =
+                await client.PostAsJsonAsync(url, request))
+            {
+                Assert.Equal(
+                    HttpStatusCode.Conflict,
+                    invalidPaymentResponse.StatusCode);
+
+                var problem = await invalidPaymentResponse.Content
+                    .ReadFromJsonAsync<
+                        Microsoft.AspNetCore.Mvc.ProblemDetails>();
+
+                Assert.Equal(
+                    "CHECKOUT_ORDER_DATA_INCOMPLETE",
+                    Assert.IsType<
+                        Microsoft.AspNetCore.Mvc.ProblemDetails>(
+                        problem).Detail);
+            }
+
+            // Restore the committed Payment amount.
+            await db.Payments
+                .Where(x => x.OrderId == created.OrderId)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.Amount,
+                    320000m));
+
+            // A replay must reject an inconsistent OrderItem.
+            await db.OrderItems
+                .Where(x =>
+                    x.OrderId == created.OrderId &&
+                    x.ProductId == rose.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.UnitPrice,
+                    119000m));
+
+            using (var invalidItemsResponse =
+                await client.PostAsJsonAsync(url, request))
+            {
+                Assert.Equal(
+                    HttpStatusCode.Conflict,
+                    invalidItemsResponse.StatusCode);
+
+                var problem = await invalidItemsResponse.Content
+                    .ReadFromJsonAsync<
+                        Microsoft.AspNetCore.Mvc.ProblemDetails>();
+
+                Assert.Equal(
+                    "CHECKOUT_ORDER_DATA_INCOMPLETE",
+                    Assert.IsType<
+                        Microsoft.AspNetCore.Mvc.ProblemDetails>(
+                        problem).Detail);
+            }
+
+            // Restore the original OrderItem snapshot.
+            await db.OrderItems
+                .Where(x =>
+                    x.OrderId == created.OrderId &&
+                    x.ProductId == rose.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.UnitPrice,
+                    120000m));
+
+            db.ChangeTracker.Clear();
+
+            // Replaying the restored snapshot must succeed.
+            var recoveredReplay = await ExpectResultAsync(
+                request,
+                HttpStatusCode.OK);
+
+            Assert.True(recoveredReplay.IsReplay);
+            Assert.Equal(created.OrderId, recoveredReplay.OrderId);
+            Assert.Equal(created.TotalAmount, recoveredReplay.TotalAmount);
+
+            // No additional Order, Payment or stock deduction.
+            Assert.Equal(1, await db.Orders.AsNoTracking()
+                .CountAsync(x => x.UserId == alice.Id));
+
+            Assert.Equal(1, await db.Payments.AsNoTracking()
+                .CountAsync(x =>
+                    x.OrderId == created.OrderId));
+
+            Assert.Equal(4, await db.Products.AsNoTracking()
+                .Where(x => x.Id == rose.Id)
+                .Select(x => x.StockQuantity)
+                .SingleAsync());
+
+            Assert.Equal(0, await db.Products.AsNoTracking()
+                .Where(x => x.Id == tulip.Id)
+                .Select(x => x.StockQuantity)
+                .SingleAsync());
+
+            Assert.False(await db.CartItems.AsNoTracking()
+                .AnyAsync(x => x.CartId == cart.Id));
+
 
             // 10. New request ID with empty Cart -> 409.
             await ExpectStatusAsync(new CheckoutRequestDto

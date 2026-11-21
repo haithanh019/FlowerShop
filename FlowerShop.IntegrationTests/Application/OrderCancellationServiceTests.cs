@@ -241,6 +241,45 @@ public sealed class OrderCancellationServiceTests
                 .ExecuteUpdateAsync(s => s.SetProperty(
                     x => x.Amount, pending.TotalAmount));
 
+
+            // A Pending payment with PaidAt is not safely cancellable.
+            await db.Payments
+                .Where(x => x.OrderId == pending.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.PaidAt,
+                    (DateTime?)DateTime.UtcNow));
+
+            var inconsistentPayment =
+                await Assert.ThrowsAsync<BusinessException>(
+                    () => CancelCustomer(
+                        alice.Id,
+                        pending.Id));
+
+            Assert.Equal(
+                "PAYMENT_NOT_CANCELLABLE",
+                inconsistentPayment.Message);
+
+            // No stock restoration or status changes.
+            Assert.Equal(5, await Stock(rose.Id));
+            Assert.Equal(0, await Stock(tulip.Id));
+            Assert.Equal(
+                OrderStatus.Pending,
+                await Status(pending.Id));
+
+            Assert.Equal(
+                PaymentStatus.Pending,
+                await PaymentStatusOf(pending.Id));
+
+            // Restore PaidAt for subsequent cancellation tests.
+            await db.Payments
+                .Where(x => x.OrderId == pending.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.PaidAt,
+                    (DateTime?)null));
+
+            db.ChangeTracker.Clear();
+
+
             // The sum of OrderItems must equal Order.Subtotal.
             await db.OrderItems
                 .Where(x => x.OrderId == pending.Id &&

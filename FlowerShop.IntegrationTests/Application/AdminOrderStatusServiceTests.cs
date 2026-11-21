@@ -244,6 +244,61 @@ public sealed class AdminOrderStatusServiceTests
                         x => x.Status,
                         PaymentStatus.Pending));
 
+
+            // Verify consistency between PaymentStatus and PaidAt
+            // before allowing early Order progression.
+            var invalidSnapshots =
+                new (PaymentStatus Status, DateTime? PaidAt)[]
+                {
+                    (PaymentStatus.Pending, DateTime.UtcNow),
+                    (PaymentStatus.Paid, null),
+                    (PaymentStatus.Paid, DateTime.UtcNow)
+                };
+
+            foreach (var snapshot in invalidSnapshots)
+            {
+                await db.Payments
+                    .Where(x => x.OrderId == order.Id)
+                    .ExecuteUpdateAsync(s => s
+                        .SetProperty(
+                            x => x.Status,
+                            snapshot.Status)
+                        .SetProperty(
+                            x => x.PaidAt,
+                            snapshot.PaidAt));
+
+                var inconsistent = await Assert.ThrowsAsync<
+                    BusinessException>(() =>
+                    service.UpdateStatusAsync(
+                        admin.Id,
+                        order.Id,
+                        OrderStatus.Confirmed));
+
+                Assert.Equal(
+                    "ORDER_PAYMENT_STATE_INVALID",
+                    inconsistent.Message);
+
+                Assert.Equal(
+                    OrderStatus.Pending,
+                    await db.Orders.AsNoTracking()
+                        .Where(x => x.Id == order.Id)
+                        .Select(x => x.Status)
+                        .SingleAsync());
+            }
+
+            // Restore a valid unpaid COD snapshot.
+            await db.Payments
+                .Where(x => x.OrderId == order.Id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(
+                        x => x.Status,
+                        PaymentStatus.Pending)
+                    .SetProperty(
+                        x => x.PaidAt,
+                        (DateTime?)null));
+
+            db.ChangeTracker.Clear();
+
             // A COD payment amount different from Order.TotalAmount
             // must block order progression.
             await db.Payments

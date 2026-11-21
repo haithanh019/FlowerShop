@@ -97,6 +97,18 @@ public sealed class AdminOrderStatusService(
                 }
 
 
+                // Before delivery, COD must remain unpaid.
+                // A Paid payment or an unexpected PaidAt timestamp
+                // indicates an inconsistent order/payment snapshot.
+                if (targetStatus != OrderStatus.Delivered &&
+                    (payments[0].Status != PaymentStatus.Pending ||
+                     payments[0].PaidAt.HasValue))
+                {
+                    throw new BusinessException(
+                        BusinessErrorType.Conflict,
+                        "ORDER_PAYMENT_STATE_INVALID");
+                }
+
                 // Validate persisted OrderItems before progression.
                 // The sum of item prices must match Order.Subtotal.
                 var orderItems = await unitOfWork

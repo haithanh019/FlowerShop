@@ -97,7 +97,9 @@ public sealed class OrderCancellationService(
 
                 if (!OrderFinancialConsistency.HasValidCodPayment(
                         order, payments) ||
-                    payments[0].Status != PaymentStatus.Pending)
+                    payments[0].Status != PaymentStatus.Pending ||
+                    payments[0].PaidAt.HasValue)
+
                 {
                     throw new BusinessException(
                         BusinessErrorType.Conflict,

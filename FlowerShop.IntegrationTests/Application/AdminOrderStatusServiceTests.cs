@@ -255,17 +255,17 @@ public sealed class AdminOrderStatusServiceTests
                     (PaymentStatus.Paid, DateTime.UtcNow)
                 };
 
-            foreach (var snapshot in invalidSnapshots)
+            foreach (var (Status, PaidAt) in invalidSnapshots)
             {
                 await db.Payments
                     .Where(x => x.OrderId == order.Id)
                     .ExecuteUpdateAsync(s => s
                         .SetProperty(
                             x => x.Status,
-                            snapshot.Status)
+                            Status)
                         .SetProperty(
                             x => x.PaidAt,
-                            snapshot.PaidAt));
+                            PaidAt));
 
                 var inconsistent = await Assert.ThrowsAsync<
                     BusinessException>(() =>

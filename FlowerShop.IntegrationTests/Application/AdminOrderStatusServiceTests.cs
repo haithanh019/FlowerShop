@@ -241,6 +241,51 @@ public sealed class AdminOrderStatusServiceTests
                         x => x.Status,
                         PaymentStatus.Pending));
 
+            // A COD payment amount different from Order.TotalAmount
+            // must block order progression.
+            await db.Payments
+                .Where(x => x.OrderId == order.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.Amount, 99999m));
+
+            var invalidAmount = await Assert.ThrowsAsync<
+                BusinessException>(() =>
+                service.UpdateStatusAsync(
+                    admin.Id, order.Id, OrderStatus.Confirmed));
+
+            Assert.Equal(
+                "ORDER_PAYMENT_STATE_INVALID",
+                invalidAmount.Message);
+
+            // A wrong currency must also block progression.
+            await db.Payments
+                .Where(x => x.OrderId == order.Id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.Amount, 100000m)
+                    .SetProperty(x => x.Currency, "USD"));
+
+            var invalidCurrency = await Assert.ThrowsAsync<
+                BusinessException>(() =>
+                service.UpdateStatusAsync(
+                    admin.Id, order.Id, OrderStatus.Confirmed));
+
+            Assert.Equal(
+                "ORDER_PAYMENT_STATE_INVALID",
+                invalidCurrency.Message);
+
+            Assert.Equal(
+                OrderStatus.Pending,
+                await db.Orders.AsNoTracking()
+                    .Where(x => x.Id == order.Id)
+                    .Select(x => x.Status)
+                    .SingleAsync());
+
+            // Restore valid payment data for the remaining tests.
+            await db.Payments
+                .Where(x => x.OrderId == order.Id)
+                .ExecuteUpdateAsync(s => s
+                    .SetProperty(x => x.Currency, "VND"));
+
             // Pending -> Confirmed -> Preparing
             // -> Shipping -> Delivered
             var expectedStatuses = new[]

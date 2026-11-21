@@ -7,6 +7,7 @@ using FlowerShop.Domain.Entities;
 using FlowerShop.Domain.Enums;
 using FlowerShop.Domain.Interfaces;
 using FlowerShop.Domain.Interfaces.Repositories;
+using FlowerShop.Application.Common.Validation;
 
 namespace FlowerShop.Application.Services;
 
@@ -75,16 +76,24 @@ public sealed class CheckoutService(
                             x => x.OrderId == existingOrder.Id,
                             cancellationToken: ct);
 
-                    var previousPayment = await unitOfWork
+
+                    var previousPayments = await unitOfWork
                         .GetRepository<Payment>()
-                        .GetByAsync(
-                            x => x.OrderId == existingOrder.Id &&
-                                 x.Method == PaymentMethod.CashOnDelivery,
+                        .FindAsync(
+                            x => x.OrderId == existingOrder.Id,
                             cancellationToken: ct);
 
-                    if (previousPayment is null || previousItems.Count == 0)
-                        throw new InvalidOperationException(
+                    if (!OrderFinancialConsistency.HasValidCodPayment(
+                            existingOrder, previousPayments) ||
+                        !OrderFinancialConsistency.HasValidOrderItems(
+                            existingOrder, previousItems))
+                    {
+                        throw new BusinessException(
+                            BusinessErrorType.Conflict,
                             "CHECKOUT_ORDER_DATA_INCOMPLETE");
+                    }
+
+                    var previousPayment = previousPayments[0];
 
                     var previousResultItems = previousItems
                         .OrderBy(x => x.ProductId)

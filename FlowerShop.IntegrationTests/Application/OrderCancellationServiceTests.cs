@@ -216,6 +216,59 @@ public sealed class OrderCancellationServiceTests
             Assert.Equal("PAYMENT_NOT_CANCELLABLE", paidDenied.Message);
             Assert.Equal(OrderStatus.Pending, await Status(paid.Id));
 
+
+            // A mismatched Payment.Amount must prevent cancellation.
+            await db.Payments
+                .Where(x => x.OrderId == pending.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.Amount, 99999m));
+
+            var invalidPaymentAmount = await Assert.ThrowsAsync<
+                BusinessException>(() =>
+                CancelCustomer(alice.Id, pending.Id));
+
+            Assert.Equal(
+                "PAYMENT_NOT_CANCELLABLE",
+                invalidPaymentAmount.Message);
+
+            Assert.Equal(5, await Stock(rose.Id));
+            Assert.Equal(0, await Stock(tulip.Id));
+            Assert.Equal(OrderStatus.Pending, await Status(pending.Id));
+
+            // Restore the correct amount.
+            await db.Payments
+                .Where(x => x.OrderId == pending.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.Amount, pending.TotalAmount));
+
+            // The sum of OrderItems must equal Order.Subtotal.
+            await db.OrderItems
+                .Where(x => x.OrderId == pending.Id &&
+                            x.ProductId == rose.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.UnitPrice, 99999m));
+
+            var invalidItems = await Assert.ThrowsAsync<
+                BusinessException>(() =>
+                CancelCustomer(alice.Id, pending.Id));
+
+            Assert.Equal(
+                "INVALID_ORDER_ITEMS",
+                invalidItems.Message);
+
+            Assert.Equal(5, await Stock(rose.Id));
+            Assert.Equal(0, await Stock(tulip.Id));
+            Assert.Equal(OrderStatus.Pending, await Status(pending.Id));
+
+            // Restore the original OrderItem snapshot.
+            await db.OrderItems
+                .Where(x => x.OrderId == pending.Id &&
+                            x.ProductId == rose.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.UnitPrice, 100000m));
+
+
+
             // 5. Customer cancellation restores each product exactly once.
             var result = await CancelCustomer(alice.Id, pending.Id);
             Assert.Equal(OrderStatus.Pending, result.PreviousStatus);

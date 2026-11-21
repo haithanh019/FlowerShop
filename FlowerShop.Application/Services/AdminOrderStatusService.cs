@@ -6,6 +6,7 @@ using FlowerShop.Domain.Entities;
 using FlowerShop.Domain.Enums;
 using FlowerShop.Domain.Interfaces;
 using FlowerShop.Domain.Policies;
+using FlowerShop.Application.Common.Validation;
 
 namespace FlowerShop.Application.Services;
 
@@ -85,8 +86,8 @@ public sealed class AdminOrderStatusService(
                         x => x.OrderId == orderId,
                         cancellationToken: ct);
 
-                if (payments.Count != 1 ||
-                    payments[0].Method != PaymentMethod.CashOnDelivery ||
+                if (!OrderFinancialConsistency.HasValidCodPayment(
+                        order, payments) ||
                     payments[0].Status is not (
                         PaymentStatus.Pending or PaymentStatus.Paid))
                 {

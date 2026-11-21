@@ -7,6 +7,7 @@ using FlowerShop.Domain.Enums;
 using FlowerShop.Domain.Interfaces;
 using FlowerShop.Domain.Interfaces.Repositories;
 using FlowerShop.Domain.Policies;
+using FlowerShop.Application.Common.Validation;
 
 namespace FlowerShop.Application.Services;
 
@@ -94,8 +95,8 @@ public sealed class OrderCancellationService(
                         trackChanges: true,
                         cancellationToken: ct);
 
-                if (payments.Count != 1 ||
-                    payments[0].Method != PaymentMethod.CashOnDelivery ||
+                if (!OrderFinancialConsistency.HasValidCodPayment(
+                        order, payments) ||
                     payments[0].Status != PaymentStatus.Pending)
                 {
                     throw new BusinessException(
@@ -108,10 +109,8 @@ public sealed class OrderCancellationService(
                         x => x.OrderId == orderId,
                         cancellationToken: ct);
 
-                if (orderItems.Count == 0 ||
-                    orderItems.Any(x => x.Quantity <= 0) ||
-                    orderItems.Select(x => x.ProductId).Distinct().Count()
-                        != orderItems.Count)
+                if (!OrderFinancialConsistency.HasValidOrderItems(
+                        order, orderItems))
                 {
                     throw new BusinessException(
                         BusinessErrorType.Conflict,

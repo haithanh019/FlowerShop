@@ -97,6 +97,22 @@ public sealed class AdminOrderStatusService(
                 }
 
 
+                // Validate persisted OrderItems before progression.
+                // The sum of item prices must match Order.Subtotal.
+                var orderItems = await unitOfWork
+                    .GetRepository<OrderItem>()
+                    .FindAsync(
+                        x => x.OrderId == orderId,
+                        cancellationToken: ct);
+
+                if (!OrderFinancialConsistency.HasValidOrderItems(
+                        order, orderItems))
+                {
+                    throw new BusinessException(
+                        BusinessErrorType.Conflict,
+                        "INVALID_ORDER_ITEMS");
+                }
+
                 // 6. Update only the tracked Order.
                 var previousStatus = order.Status;
                 var now = DateTime.UtcNow;

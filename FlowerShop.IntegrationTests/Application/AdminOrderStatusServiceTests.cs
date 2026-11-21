@@ -280,11 +280,79 @@ public sealed class AdminOrderStatusServiceTests
                     .Select(x => x.Status)
                     .SingleAsync());
 
-            // Restore valid payment data for the remaining tests.
+            // Restore valid payment data before testing OrderItems.
             await db.Payments
                 .Where(x => x.OrderId == order.Id)
                 .ExecuteUpdateAsync(s => s
                     .SetProperty(x => x.Currency, "VND"));
+
+            // Reject OrderItems whose total differs from Subtotal.
+            await db.OrderItems
+                .Where(x => x.OrderId == order.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.UnitPrice, 125000m));
+
+            var invalidItems = await Assert.ThrowsAsync<
+                BusinessException>(() =>
+                service.UpdateStatusAsync(
+                    admin.Id,
+                    order.Id,
+                    OrderStatus.Confirmed));
+
+            Assert.Equal(
+                "INVALID_ORDER_ITEMS",
+                invalidItems.Message);
+
+            Assert.Equal(
+                OrderStatus.Pending,
+                await db.Orders.AsNoTracking()
+                    .Where(x => x.Id == order.Id)
+                    .Select(x => x.Status)
+                    .SingleAsync());
+
+            // Restore the correct OrderItem amount.
+            await db.OrderItems
+                .Where(x => x.OrderId == order.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(
+                    x => x.UnitPrice, 100000m));
+
+            // Reject an Order that has no OrderItems.
+            await db.OrderItems
+                .Where(x => x.OrderId == order.Id)
+                .ExecuteDeleteAsync();
+
+            var missingItems = await Assert.ThrowsAsync<
+                BusinessException>(() =>
+                service.UpdateStatusAsync(
+                    admin.Id,
+                    order.Id,
+                    OrderStatus.Confirmed));
+
+            Assert.Equal(
+                "INVALID_ORDER_ITEMS",
+                missingItems.Message);
+
+            // Clear stale EF tracking after ExecuteDelete.
+            db.ChangeTracker.Clear();
+
+            // Restore the valid OrderItem for progression tests.
+            db.OrderItems.Add(new OrderItem
+            {
+                OrderId = order.Id,
+                ProductId = product.Id,
+                ProductName = product.Name,
+                UnitPrice = 100000m,
+                Quantity = 1
+            });
+
+            await db.SaveChangesAsync();
+
+            Assert.Equal(
+                OrderStatus.Pending,
+                await db.Orders.AsNoTracking()
+                    .Where(x => x.Id == order.Id)
+                    .Select(x => x.Status)
+                    .SingleAsync());
 
             // Pending -> Confirmed -> Preparing
             // -> Shipping -> Delivered

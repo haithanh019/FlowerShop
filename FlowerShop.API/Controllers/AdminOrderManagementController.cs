@@ -10,8 +10,10 @@ namespace FlowerShop.API.Controllers;
 [Authorize(Roles = "Admin")]
 public sealed class AdminOrderManagementController(
     IAdminOrderStatusService statusService,
-    IOrderCancellationService cancellationService)
+    IOrderCancellationService cancellationService,
+    ICodPaymentSettlementService codPaymentSettlementService)
     : ControllerBase
+
 {
     // PATCH /api/admin/orders/{orderId}/status
     [HttpPatch("{orderId:guid}/status")]
@@ -77,6 +79,39 @@ public sealed class AdminOrderManagementController(
 
         return Ok(result);
     }
+
+
+    // POST /api/admin/orders/{orderId}/payments/cod/confirm
+    [HttpPost("{orderId:guid}/payments/cod/confirm")]
+    [ProducesResponseType(
+        typeof(CodPaymentSettlementResultDto),
+        StatusCodes.Status200OK)]
+    [ProducesResponseType(
+        StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(
+        StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(
+        StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(
+        StatusCodes.Status404NotFound)]
+    [ProducesResponseType(
+        StatusCodes.Status409Conflict)]
+    public async Task<IActionResult> ConfirmCodPayment(
+        Guid orderId,
+        CancellationToken cancellationToken)
+    {
+        if (!TryGetAdminUserId(out var adminUserId))
+            return Unauthorized();
+
+        var result =
+            await codPaymentSettlementService.ConfirmCollectedAsync(
+                adminUserId,
+                orderId,
+                cancellationToken);
+
+        return Ok(result);
+    }
+
 
     private bool TryGetAdminUserId(out Guid userId)
     {

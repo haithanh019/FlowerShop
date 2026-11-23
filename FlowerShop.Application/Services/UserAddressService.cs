@@ -197,6 +197,72 @@ public sealed class UserAddressService(
             cancellationToken);
     }
 
+    public async Task<UserAddressDto> SetDefaultAsync(
+        Guid userId,
+        Guid addressId,
+        CancellationToken cancellationToken = default)
+    {
+        // 1. Validate identifiers before opening transaction.
+        ValidateUserId(userId);
+        ValidateAddressId(addressId);
+
+        // 2. Serialize all address mutations for this Customer.
+        return await unitOfWork.ExecuteInLockedTransactionAsync(
+            AddressLockKey(userId),
+            async ct =>
+            {
+                // 3. Verify active Customer.
+                await EnsureActiveCustomerAsync(userId, ct);
+
+                // 4. Fetch the target with ownership enforcement.
+                // Tracking is necessary because we may update it.
+                var target = await addresses.GetByAsync(
+                    x => x.Id == addressId &&
+                         x.UserId == userId,
+                    trackChanges: true,
+                    cancellationToken: ct) ?? throw AddressNotFound();
+
+                // 5. Idempotency:
+                // Selecting the current default changes nothing.
+                if (target.IsDefault)
+                {
+                    return ToDto(target);
+                }
+
+                // 6. Locate the previous default.
+                var previousDefault = await addresses.GetByAsync(
+                    x => x.UserId == userId &&
+                         x.IsDefault,
+                    trackChanges: true,
+                    cancellationToken: ct);
+
+                var now = DateTime.UtcNow;
+
+                if (previousDefault is not null)
+                {
+                    // 7. Demote the old default.
+                    previousDefault.IsDefault = false;
+                    previousDefault.UpdatedAt = now;
+
+                    // IMPORTANT:
+                    // Flush this change BEFORE promoting target.
+                    // SaveChanges remains inside the SQL transaction.
+                    // It does not commit the transaction.
+                    await unitOfWork.SaveChangesAsync(ct);
+                }
+
+                // 8. Promote the selected address.
+                // Also supports legacy data without a default.
+                target.IsDefault = true;
+                target.UpdatedAt = now;
+
+                // 9. UnitOfWork performs final SaveChanges + Commit.
+                // Do not call SaveChangesAsync here again.
+                return ToDto(target);
+            },
+            cancellationToken);
+    }
+
     private async Task EnsureActiveCustomerAsync(
         Guid userId,
         CancellationToken cancellationToken)

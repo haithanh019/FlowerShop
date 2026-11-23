@@ -27,4 +27,9 @@ public interface IUserAddressService
         Guid userId,
         Guid addressId,
         CancellationToken cancellationToken = default);
+    Task<UserAddressDto> SetDefaultAsync(
+        Guid userId,
+        Guid addressId,
+        CancellationToken cancellationToken = default);
+
 }

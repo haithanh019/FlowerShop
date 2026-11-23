@@ -7,6 +7,7 @@ public class Order : BaseEntity
 {
     // Order Information
     public string OrderCode { get; set; } = string.Empty;
+    public string? CheckoutRequestFingerprint { get; set; }
     public OrderStatus Status { get; set; } = OrderStatus.Pending;
 
     // Foreign Key

@@ -20,6 +20,7 @@ public static class DependencyInjection
         services.AddScoped<IProductQueryService,ProductQueryService>();
         services.AddScoped<IProductImageQueryService, ProductImageQueryService>();
         services.AddScoped<ICartQueryService, CartQueryService>();
+        services.AddScoped<IOrderQueryService, OrderQueryService>();
 
         // Register Application Services
         services.AddScoped<IAuthService, AuthService>();
@@ -32,6 +33,10 @@ public static class DependencyInjection
         services.AddScoped<IProductStockService, ProductStockService>();
         services.AddScoped<IProductImageService, ProductImageService>();
         services.AddScoped<ICartService, CartService>();
+        services.AddScoped<ICheckoutService, CheckoutService>();
+        services.AddScoped<IAdminOrderStatusService, AdminOrderStatusService>();
+        services.AddScoped<IOrderCancellationService, OrderCancellationService>();
+        services.AddScoped<ICodPaymentSettlementService, CodPaymentSettlementService>();
 
         return services;
     }

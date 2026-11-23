@@ -13,4 +13,5 @@ public sealed record CheckoutResultDto(
     decimal DiscountAmount,
     decimal TotalAmount,
     IReadOnlyList<OrderItemDto> Items,
-    DateTime CreatedAt);
+    DateTime CreatedAt,
+    bool IsReplay = false);

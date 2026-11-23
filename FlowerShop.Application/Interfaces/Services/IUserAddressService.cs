@@ -17,4 +17,10 @@ public interface IUserAddressService
         Guid userId,
         UserAddressUpsertDto dto,
         CancellationToken cancellationToken = default);
+
+    Task<UserAddressDto> UpdateAsync(
+        Guid userId,
+        Guid addressId,
+        UserAddressUpsertDto dto,
+        CancellationToken cancellationToken = default);
 }

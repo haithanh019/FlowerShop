@@ -1,4 +1,5 @@
-﻿using System.ComponentModel.DataAnnotations;
+﻿
+using System.ComponentModel.DataAnnotations;
 using FlowerShop.Application.Common.Exceptions;
 using FlowerShop.Application.DTOs.UserAddresses;
 using FlowerShop.Application.Interfaces.Services;
@@ -41,16 +42,12 @@ public sealed class UserAddressService(
         CancellationToken cancellationToken = default)
     {
         ValidateUserId(userId);
-
-        if (addressId == Guid.Empty)
-            throw new ValidationException("INVALID_ADDRESS_ID");
+        ValidateAddressId(addressId);
 
         var address = await addresses.GetByAsync(
             x => x.Id == addressId &&
                  x.UserId == userId,
-            cancellationToken: cancellationToken) ?? throw new BusinessException(
-                BusinessErrorType.NotFound,
-                "ADDRESS_NOT_FOUND");
+            cancellationToken: cancellationToken) ?? throw AddressNotFound();
         return ToDto(address);
     }
 
@@ -59,82 +56,151 @@ public sealed class UserAddressService(
         UserAddressUpsertDto dto,
         CancellationToken cancellationToken = default)
     {
-        // 1. Validate input before opening a transaction.
         ValidateUserId(userId);
+        ValidateDto(dto);
+
+        return await unitOfWork.ExecuteInLockedTransactionAsync(
+            AddressLockKey(userId),
+            async ct =>
+            {
+                await EnsureActiveCustomerAsync(userId, ct);
+
+                var existingDefault = await addresses.GetByAsync(
+                    x => x.UserId == userId && x.IsDefault,
+                    cancellationToken: ct);
+
+                var address = new UserAddress
+                {
+                    UserId = userId,
+                    IsDefault = existingDefault is null
+                };
+
+                ApplyFields(address, dto);
+
+                await addresses.AddAsync(address, ct);
+
+                // UnitOfWork saves and commits after callback.
+                return ToDto(address);
+            },
+            cancellationToken);
+    }
+
+    public async Task<UserAddressDto> UpdateAsync(
+        Guid userId,
+        Guid addressId,
+        UserAddressUpsertDto dto,
+        CancellationToken cancellationToken = default)
+    {
+        // 1. Validate identifiers and request body.
+        ValidateUserId(userId);
+        ValidateAddressId(addressId);
+        ValidateDto(dto);
+
+        // 2. Use the same lock as CreateAsync.
+        return await unitOfWork.ExecuteInLockedTransactionAsync(
+            AddressLockKey(userId),
+            async ct =>
+            {
+                // 3. Check account state inside transaction.
+                await EnsureActiveCustomerAsync(userId, ct);
+
+                // 4. Ownership must be part of the query.
+                // trackChanges: true is required for EF updates.
+                var address = await addresses.GetByAsync(
+                    x => x.Id == addressId &&
+                         x.UserId == userId,
+                    trackChanges: true,
+                    cancellationToken: ct) ?? throw AddressNotFound();
+
+                // 5. Update only editable address fields.
+                ApplyFields(address, dto);
+
+                // Never change:
+                // Id, UserId, CreatedAt, IsDefault.
+                address.UpdatedAt = DateTime.UtcNow;
+
+                // The entity is already tracked.
+                // Do not call addresses.Update().
+                // Do not call SaveChangesAsync().
+                return ToDto(address);
+            },
+            cancellationToken);
+    }
+
+    private async Task EnsureActiveCustomerAsync(
+        Guid userId,
+        CancellationToken cancellationToken)
+    {
+        var user = await users.GetByAsync(
+            x => x.Id == userId &&
+                 x.IsActive &&
+                 x.Role == UserRole.Customer,
+            cancellationToken: cancellationToken) ?? throw new BusinessException(
+                BusinessErrorType.NotFound,
+                "USER_NOT_FOUND");
+    }
+
+    private static void ApplyFields(
+        UserAddress address,
+        UserAddressUpsertDto dto)
+    {
+        address.RecipientName = dto.RecipientName.Trim();
+        address.RecipientPhone = dto.RecipientPhone.Trim();
+
+        address.AddressLine = dto.AddressLine.Trim();
+        address.Ward = dto.Ward.Trim();
+        address.District = dto.District.Trim();
+        address.Province = dto.Province.Trim();
+
+        address.CountryCode = dto.CountryCode
+            .Trim()
+            .ToUpperInvariant();
+
+        address.PostalCode =
+            string.IsNullOrWhiteSpace(dto.PostalCode)
+                ? null
+                : dto.PostalCode.Trim();
+    }
+
+    private static string AddressLockKey(Guid userId)
+    {
+        return $"flower-shop:user-addresses:{userId:N}";
+    }
+
+    private static void ValidateDto(
+        UserAddressUpsertDto dto)
+    {
         ArgumentNullException.ThrowIfNull(dto);
 
         Validator.ValidateObject(
             dto,
             new ValidationContext(dto),
             validateAllProperties: true);
-
-        // 2. Serialize address mutations for this Customer.
-        // The UnitOfWork commits after the callback succeeds.
-        return await unitOfWork.ExecuteInLockedTransactionAsync(
-            $"flower-shop:user-addresses:{userId:N}",
-            async ct =>
-            {
-                // 3. Verify that the Customer is active.
-                var user = await users.GetByAsync(
-                    x => x.Id == userId &&
-                         x.IsActive &&
-                         x.Role == UserRole.Customer,
-                    cancellationToken: ct) ?? throw new BusinessException(
-                        BusinessErrorType.NotFound,
-                        "USER_NOT_FOUND");
-
-                // 4. Check whether this Customer already
-                // has a default address.
-                var existingDefault = await addresses.GetByAsync(
-                    x => x.UserId == userId &&
-                         x.IsDefault,
-                    cancellationToken: ct);
-
-                // 5. Never accept UserId or IsDefault
-                // from the client.
-                var address = new UserAddress
-                {
-                    UserId = userId,
-
-                    RecipientName = dto.RecipientName.Trim(),
-                    RecipientPhone = dto.RecipientPhone.Trim(),
-
-                    AddressLine = dto.AddressLine.Trim(),
-                    Ward = dto.Ward.Trim(),
-                    District = dto.District.Trim(),
-                    Province = dto.Province.Trim(),
-
-                    CountryCode = dto.CountryCode
-                        .Trim()
-                        .ToUpperInvariant(),
-
-                    PostalCode = string.IsNullOrWhiteSpace(
-                        dto.PostalCode)
-                        ? null
-                        : dto.PostalCode.Trim(),
-
-                    // First address becomes default.
-                    // Also repairs the no-default case
-                    // when adding a new address.
-                    IsDefault = existingDefault is null
-                };
-
-                // 6. Add to the shared DbContext.
-                await addresses.AddAsync(address, ct);
-
-                // ExecuteInLockedTransactionAsync calls
-                // SaveChangesAsync and commits the transaction.
-                // Do not call SaveChangesAsync here.
-
-                return ToDto(address);
-            },
-            cancellationToken);
     }
 
     private static void ValidateUserId(Guid userId)
     {
         if (userId == Guid.Empty)
-            throw new ValidationException("INVALID_USER_ID");
+        {
+            throw new ValidationException(
+                "INVALID_USER_ID");
+        }
+    }
+
+    private static void ValidateAddressId(Guid addressId)
+    {
+        if (addressId == Guid.Empty)
+        {
+            throw new ValidationException(
+                "INVALID_ADDRESS_ID");
+        }
+    }
+
+    private static BusinessException AddressNotFound()
+    {
+        return new BusinessException(
+            BusinessErrorType.NotFound,
+            "ADDRESS_NOT_FOUND");
     }
 
     private static UserAddressDto ToDto(UserAddress address)

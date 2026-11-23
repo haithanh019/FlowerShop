@@ -75,30 +75,37 @@ public sealed class RegisterDtoValidationTests
     [Fact]
     public void RegisterDto_OverlongFields_ShouldFail()
     {
-        var dto = new RegisterDto
+        // Isolate each validation failure. Class-level IValidatableObject.Validate()
+        // is not called when another property-level validation has already failed.
+        static RegisterDto ValidDto() => new()
         {
-            FullName = new string('A', 151),
-            Email = $"{new string('a', 250)}@example.com",
-            Password = new string('P', 129),
-            ConfirmPassword = new string('P', 129)
+            FullName = "Nguyen Van A",
+            Email = "customer@example.com",
+            Password = "FlowerShop#2026",
+            ConfirmPassword = "FlowerShop#2026"
         };
 
-        var errors = Validate(dto);
-
+        var invalidName = ValidDto();
+        invalidName.FullName = new string('A', 151);
         Assert.Contains(
-            errors,
-            x => x.MemberNames.Contains(
-                nameof(RegisterDto.FullName)));
+            Validate(invalidName),
+            x => x.ErrorMessage == "FULL_NAME_TOO_LONG" &&
+                 x.MemberNames.Contains(nameof(RegisterDto.FullName)));
 
+        var invalidEmail = ValidDto();
+        invalidEmail.Email = $"{new string('a', 250)}@example.com";
         Assert.Contains(
-            errors,
-            x => x.MemberNames.Contains(
-                nameof(RegisterDto.Email)));
+            Validate(invalidEmail),
+            x => x.ErrorMessage == "EMAIL_TOO_LONG" &&
+                 x.MemberNames.Contains(nameof(RegisterDto.Email)));
 
+        var invalidPassword = ValidDto();
+        invalidPassword.Password = new string('P', 129);
+        invalidPassword.ConfirmPassword = invalidPassword.Password;
         Assert.Contains(
-            errors,
-            x => x.MemberNames.Contains(
-                nameof(RegisterDto.Password)));
+            Validate(invalidPassword),
+            x => x.ErrorMessage == "PASSWORD_LENGTH_INVALID" &&
+                 x.MemberNames.Contains(nameof(RegisterDto.Password)));
     }
 
     [Fact]
@@ -117,17 +124,14 @@ public sealed class RegisterDtoValidationTests
         Assert.NotEmpty(errors);
     }
 
-    private static List<ValidationResult> Validate(
-        RegisterDto dto)
+    private static List<ValidationResult> Validate(RegisterDto dto)
     {
         var results = new List<ValidationResult>();
-
         Validator.TryValidateObject(
             dto,
             new ValidationContext(dto),
             results,
             validateAllProperties: true);
-
         return results;
     }
 }

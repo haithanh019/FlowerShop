@@ -92,7 +92,7 @@ public sealed class AuthenticationInputValidationTests
         ConfirmPassword = "FlowerShop#2026"
     };
 
-    private static IReadOnlyList<ValidationResult> Validate(
+    private static List<ValidationResult> Validate(
         object dto)
     {
         var errors = new List<ValidationResult>();

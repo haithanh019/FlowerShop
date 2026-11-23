@@ -127,6 +127,76 @@ public sealed class UserAddressService(
             cancellationToken);
     }
 
+
+    public async Task DeleteAsync(
+        Guid userId,
+        Guid addressId,
+        CancellationToken cancellationToken = default)
+    {
+        // 1. Validate input before opening a transaction.
+        ValidateUserId(userId);
+        ValidateAddressId(addressId);
+
+        // 2. Serialize mutations for the same Customer.
+        _ = await unitOfWork.ExecuteInLockedTransactionAsync(
+            AddressLockKey(userId),
+            async ct =>
+            {
+                // 3. Only active Customers can delete addresses.
+                await EnsureActiveCustomerAsync(userId, ct);
+
+                // 4. Enforce ownership in the database query.
+                var address = await addresses.GetByAsync(
+                    x => x.Id == addressId &&
+                         x.UserId == userId,
+                    trackChanges: true,
+                    cancellationToken: ct) ?? throw AddressNotFound();
+
+                UserAddress? replacement = null;
+
+                // 5. A replacement is needed only when
+                // the deleted address is the default.
+                if (address.IsDefault)
+                {
+                    var remaining = await addresses.FindAsync(
+                        x => x.UserId == userId &&
+                             x.Id != addressId,
+                        trackChanges: true,
+                        cancellationToken: ct);
+
+                    replacement = remaining
+                        .OrderBy(x => x.CreatedAt)
+                        .ThenBy(x => x.Id)
+                        .FirstOrDefault();
+                }
+
+                // 6. Mark the requested address for deletion.
+                addresses.Delete(address);
+
+                if (replacement is not null)
+                {
+                    // IMPORTANT:
+                    // Flush the DELETE before promoting another
+                    // address, to avoid violating the filtered
+                    // unique index UX_UserAddresses_OneDefault.
+                    //
+                    // This SaveChanges remains inside the
+                    // current SQL transaction. It does not commit.
+                    await unitOfWork.SaveChangesAsync(ct);
+
+                    // 7. Promote the selected replacement.
+                    // It is already tracked by EF Core.
+                    replacement.IsDefault = true;
+                    replacement.UpdatedAt = DateTime.UtcNow;
+                }
+
+                // The UnitOfWork performs the final SaveChanges
+                // and commits only after this callback succeeds.
+                return true;
+            },
+            cancellationToken);
+    }
+
     private async Task EnsureActiveCustomerAsync(
         Guid userId,
         CancellationToken cancellationToken)

@@ -23,4 +23,8 @@ public interface IUserAddressService
         Guid addressId,
         UserAddressUpsertDto dto,
         CancellationToken cancellationToken = default);
+    Task DeleteAsync(
+        Guid userId,
+        Guid addressId,
+        CancellationToken cancellationToken = default);
 }

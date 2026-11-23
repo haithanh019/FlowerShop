@@ -1,12 +1,14 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using FlowerShop.Application.Validators;
 
 namespace FlowerShop.Application.DTOs.Auth;
 
 public sealed class LoginDto
 {
-    [Required, EmailAddress]
+    [Required(ErrorMessage = "EMAIL_REQUIRED")]
+    [NormalizedEmail]
     public string Email { get; set; } = string.Empty;
 
-    [Required]
+    [Required(ErrorMessage = "PASSWORD_REQUIRED")]
     public string Password { get; set; } = string.Empty;
 }

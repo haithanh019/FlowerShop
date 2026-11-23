@@ -1,20 +1,15 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using FlowerShop.Application.Validators;
 
 namespace FlowerShop.Application.DTOs.Auth;
 
 public sealed class RegisterDto : IValidatableObject
 {
     [Required(ErrorMessage = "FULL_NAME_REQUIRED")]
-    [StringLength(
-        150,
-        ErrorMessage = "FULL_NAME_TOO_LONG")]
     public string FullName { get; set; } = string.Empty;
 
     [Required(ErrorMessage = "EMAIL_REQUIRED")]
-    [EmailAddress(ErrorMessage = "EMAIL_INVALID")]
-    [StringLength(
-        256,
-        ErrorMessage = "EMAIL_TOO_LONG")]
+    [NormalizedEmail]
     public string Email { get; set; } = string.Empty;
 
     [Required(ErrorMessage = "PASSWORD_REQUIRED")]
@@ -35,13 +30,21 @@ public sealed class RegisterDto : IValidatableObject
     public IEnumerable<ValidationResult> Validate(
         ValidationContext validationContext)
     {
-        // Validate the normalized name length.
-        // "A " must not pass the 2-character rule.
-        if (!string.IsNullOrWhiteSpace(FullName) &&
-            FullName.Trim().Length < 2)
+        if (string.IsNullOrWhiteSpace(FullName))
+            yield break;
+
+        var normalizedName = FullName.Trim();
+
+        if (normalizedName.Length < 2)
         {
             yield return new ValidationResult(
                 "FULL_NAME_TOO_SHORT",
+                [nameof(FullName)]);
+        }
+        else if (normalizedName.Length > 150)
+        {
+            yield return new ValidationResult(
+                "FULL_NAME_TOO_LONG",
                 [nameof(FullName)]);
         }
     }

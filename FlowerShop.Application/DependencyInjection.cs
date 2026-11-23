@@ -21,7 +21,7 @@ public static class DependencyInjection
         services.AddScoped<IProductImageQueryService, ProductImageQueryService>();
         services.AddScoped<ICartQueryService, CartQueryService>();
         services.AddScoped<IOrderQueryService, OrderQueryService>();
-
+        services.AddScoped<IAdminOrderQueryService, AdminOrderQueryService>();
         // Register Application Services
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IPasswordHasher<User>,PasswordHasher<User>>();

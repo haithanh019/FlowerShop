@@ -3,7 +3,7 @@ using System.Text.RegularExpressions;
 
 namespace FlowerShop.Application.DTOs.UserAddresses;
 
-public sealed class UserAddressUpsertDto : IValidatableObject
+public sealed partial class UserAddressUpsertDto : IValidatableObject
 {
     public string RecipientName { get; set; } = string.Empty;
 
@@ -94,5 +94,51 @@ public sealed class UserAddressUpsertDto : IValidatableObject
                 "RECIPIENT_NAME_TOO_SHORT",
                 [nameof(RecipientName)]);
         }
+
+        // 3. Phone validation.
+        // Permit digits and common phone separators.
+        if (!string.IsNullOrWhiteSpace(RecipientPhone))
+        {
+            var phone = RecipientPhone.Trim();
+
+            var digitCount = phone.Count(
+                c => c is >= '0' and <= '9');
+
+            if (phone.Length is < 7 or > 20 ||
+            digitCount < 7 ||
+            !RecipientPhoneRegex().IsMatch(phone))
+            {
+                yield return new ValidationResult(
+                    "RECIPIENT_PHONE_INVALID",
+                    [nameof(RecipientPhone)]);
+            }
+        }
+
+        // 4. ISO-style two-letter country code.
+        var countryCode = CountryCode?.Trim() ?? "";
+
+        if (!CountryCodeRegex().IsMatch(countryCode))
+        {
+            yield return new ValidationResult(
+                "COUNTRY_CODE_INVALID",
+                [nameof(CountryCode)]);
+        }
+
+        // 5. Optional postal code.
+        if (!string.IsNullOrWhiteSpace(PostalCode) &&
+            PostalCode.Trim().Length > 20)
+        {
+            yield return new ValidationResult(
+                "POSTAL_CODE_TOO_LONG",
+                [nameof(PostalCode)]);
+        }
     }
+
+
+    [GeneratedRegex(@"^\+?[0-9][0-9 ().-]*$")]
+    private static partial Regex RecipientPhoneRegex();
+
+    [GeneratedRegex(@"^[A-Za-z]{2}$")]
+    private static partial Regex CountryCodeRegex();
+
 }

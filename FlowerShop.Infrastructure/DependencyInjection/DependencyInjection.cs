@@ -33,6 +33,7 @@ public static class DependencyInjection
         services.AddScoped<IImageStorageRepository, CloudinaryImageRepository>();
         services.AddScoped<IProductImagePrimaryRepository, ProductImagePrimaryRepository>();
         services.AddScoped<IOrderReadRepository, OrderReadRepository>();
+        services.AddScoped<IAdminOrderReadRepository, AdminOrderReadRepository>();
         return services;
     }
 }

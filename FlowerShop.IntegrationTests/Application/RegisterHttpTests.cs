@@ -54,7 +54,7 @@ public sealed class RegisterHttpTests
             var request = new
             {
                 fullName = "  Nguyen Van A  ",
-                email = email.ToUpperInvariant(),
+                email = $"  {email.ToUpperInvariant()}  ",
                 password = Password,
                 confirmPassword = Password,
 
@@ -187,7 +187,7 @@ public sealed class RegisterHttpTests
                 LoginUrl,
                 new LoginDto
                 {
-                    Email = email.ToUpperInvariant(),
+                    Email = $"  {email.ToUpperInvariant()}  ",
                     Password = Password
                 });
 
@@ -250,7 +250,7 @@ public sealed class RegisterHttpTests
         var secondRequest = new RegisterDto
         {
             FullName = "Second Customer",
-            Email = email.ToUpperInvariant(),
+            Email = $"  {email.ToUpperInvariant()}  ",
             Password = Password,
             ConfirmPassword = Password
         };

@@ -12,4 +12,9 @@ public interface IUserAddressService
         Guid userId,
         Guid addressId,
         CancellationToken cancellationToken = default);
+
+    Task<UserAddressDto> CreateAsync(
+        Guid userId,
+        UserAddressUpsertDto dto,
+        CancellationToken cancellationToken = default);
 }

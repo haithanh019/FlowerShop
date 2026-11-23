@@ -7,6 +7,7 @@ using FlowerShop.Infrastructure.DependencyInjection;
 using Microsoft.Data.SqlClient;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using System.Data.SqlTypes;
 using Xunit;
 
 namespace FlowerShop.IntegrationTests.Infrastructure;
@@ -181,9 +182,11 @@ public sealed class AdminOrderReadRepositoryTests
             // CreatedAt DESC and Id DESC break timestamp ties.
             var expectedOrder = seededOrders
                 .OrderByDescending(x => x.CreatedAt)
-                .ThenByDescending(x => x.Id)
+                .ThenByDescending(x =>
+                    new SqlGuid(x.Id.ToByteArray()))
                 .Select(x => x.Id)
                 .ToArray();
+
 
             var secondPage = await repository.GetPageAsync(
                 null, null, null, 2, 2);

@@ -51,13 +51,9 @@ public sealed class OrderCancellationService(
                         x => x.Id == actorUserId &&
                              x.IsActive &&
                              x.Role == actorRole,
-                        cancellationToken: ct);
-
-                if (actor is null)
-                    throw new BusinessException(
+                        cancellationToken: ct) ?? throw new BusinessException(
                         BusinessErrorType.Unauthorized,
                         "ORDER_CANCEL_ACCESS_REQUIRED");
-
                 var order = await unitOfWork.GetRepository<Order>()
                     .GetByIdAsync(
                         orderId,

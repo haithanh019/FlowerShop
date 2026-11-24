@@ -1,4 +1,4 @@
-﻿using FlowerShop.Domain.Entities;
+using FlowerShop.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -58,7 +58,6 @@ public sealed class OrderConfiguration
             .HasMaxLength(20)
             .IsRequired();
 
-        // Shipping Address
         builder.Property(x => x.ShippingAddressLine)
             .HasMaxLength(300)
             .IsRequired();
@@ -134,5 +133,15 @@ public sealed class OrderConfiguration
         // Voucher Index
         builder.HasIndex(x => x.VoucherId)
             .HasDatabaseName("IX_Orders_VoucherId");
+
+        // Cover voucher history, global usage and per-customer usage queries.
+        // Retain the existing narrow index until workload measurements justify removal.
+        builder.HasIndex(x => new
+        {
+            x.VoucherId,
+            x.UserId,
+            x.Status
+        })
+            .HasDatabaseName("IX_Orders_VoucherId_UserId_Status");
     }
 }

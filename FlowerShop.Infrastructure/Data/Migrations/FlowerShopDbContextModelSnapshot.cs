@@ -274,6 +274,9 @@ namespace FlowerShop.Infrastructure.Data.Migrations
                     b.HasIndex("UserId", "CreatedAt")
                         .HasDatabaseName("IX_Orders_UserId_CreatedAt");
 
+                    b.HasIndex("VoucherId", "UserId", "Status")
+                        .HasDatabaseName("IX_Orders_VoucherId_UserId_Status");
+
                     b.ToTable("Orders", null, t =>
                         {
                             t.HasCheckConstraint("CK_Orders_Amounts_NonNegative", "[Subtotal] >= 0 AND [ShippingFee] >= 0 AND [DiscountAmount] >= 0 AND [TotalAmount] >= 0");

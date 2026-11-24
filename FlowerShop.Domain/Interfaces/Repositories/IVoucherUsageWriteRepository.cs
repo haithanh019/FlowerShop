@@ -7,4 +7,10 @@ public interface IVoucherUsageWriteRepository
     Task<bool> TryIncrementAsync(
         Guid voucherId, int expectedUsedCount,
         CancellationToken cancellationToken = default);
+
+    // Caller must hold the same voucher lock used for redemption and administration.
+    // Decrement and the Order cancellation must commit together.
+    Task<bool> TryDecrementAsync(
+        Guid voucherId, int expectedUsedCount,
+        CancellationToken cancellationToken = default);
 }

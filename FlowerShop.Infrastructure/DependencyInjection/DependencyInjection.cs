@@ -35,6 +35,7 @@ public static class DependencyInjection
         services.AddScoped<IOrderReadRepository, OrderReadRepository>();
         services.AddScoped<IAdminOrderReadRepository, AdminOrderReadRepository>();
         services.AddScoped<IAdminVoucherReadRepository, AdminVoucherReadRepository>();
+        services.AddScoped<IVoucherUsageReadRepository,VoucherUsageReadRepository>();
         return services;
     }
 }

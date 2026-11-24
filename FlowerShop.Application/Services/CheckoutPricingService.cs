@@ -36,7 +36,7 @@ public sealed class CheckoutPricingService(
         if (code is null)
         {
             var total = CheckoutPricingPolicy.CalculateTotal(subtotal, shipping, 0m);
-            return new CheckoutPrice(null, new VoucherPrice(subtotal, shipping, 0m, total));
+            return new CheckoutPrice(null, new VoucherPrice(subtotal, shipping, 0m, total), null);
         }
 
         if (!CheckoutPricingPolicy.IsStoredMoney(subtotal) || subtotal <= 0m)
@@ -71,9 +71,8 @@ public sealed class CheckoutPricingService(
         var price = VoucherPricingPolicy.Evaluate(voucher, subtotal, shipping,
             actualUsed, customerUsed, now);
 
-        // No mutation here. Step D will persist VoucherId and increment UsedCount
-        // under this same lock before the outer transaction commits.
-        return new CheckoutPrice(voucher.Id, price);
+        // The caller will increment the counter and persist the order under the same lock.
+        return new CheckoutPrice(voucher.Id, price, voucher.UsedCount);
     }
 
     private static void EnsureCanonical(Voucher voucher, string code)

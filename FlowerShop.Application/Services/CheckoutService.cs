@@ -15,7 +15,9 @@ namespace FlowerShop.Application.Services;
 public sealed class CheckoutService(
     IUnitOfWork unitOfWork,
     IProductStockRepository stockRepository,
-    ICheckoutPricingService pricingService)
+    ICheckoutPricingService pricingService,
+    IVoucherUsageWriteRepository voucherUsage,
+    CheckoutVoucherRollout rollout)
     : ICheckoutService
 {
     public async Task<CheckoutResultDto> CheckoutAsync(
@@ -76,9 +78,8 @@ public sealed class CheckoutService(
                         existingOrder.TotalAmount, previousResultItems, existingOrder.CreatedAt, IsReplay: true);
                 }
 
-                // Temporary rollout guard. Remove only after atomic redemption AND
-                // cancellation restoration are implemented and verified.
-                if (voucherCode is not null)
+                // Normal API DI remains disabled until cancellation restoration is verified.
+                if (voucherCode is not null && !rollout.Enabled)
                     throw new BusinessException(BusinessErrorType.Conflict, "CHECKOUT_VOUCHER_NOT_ENABLED");
 
                 // 2. Verify address ownership.
@@ -124,14 +125,38 @@ public sealed class CheckoutService(
                     });
                 }
 
-                // 7. Shared pricing. Only the no-voucher path is enabled in step C.
+                // 7. Shared pricing. The voucher lock remains held until commit/rollback.
                 var subtotal = CheckoutPricingPolicy.CalculateSubtotal(
                     orderItems.Select(x => (x.UnitPrice, x.Quantity)));
                 var prepared = await pricingService.PrepareAsync(userId, voucherCode, subtotal, ct);
-                // Defense in depth: never persist a discounted order without usage accounting.
-                if (prepared.VoucherId is not null || prepared.Price.DiscountAmount != 0m)
-                    throw new BusinessException(BusinessErrorType.Conflict, "CHECKOUT_VOUCHER_NOT_ENABLED");
                 var price = prepared.Price;
+
+                // Fail closed if the internal pricing result does not match the request.
+                if (price.Subtotal != subtotal ||
+                    price.ShippingFee != CheckoutPricingPolicy.CodShippingFee ||
+                    CheckoutPricingPolicy.CalculateTotal(subtotal, price.ShippingFee,
+                        price.DiscountAmount) != price.TotalAmount)
+                    throw new BusinessException(BusinessErrorType.Conflict, "CHECKOUT_PRICING_INCONSISTENT");
+
+                if (voucherCode is null)
+                {
+                    if (prepared.VoucherId is not null || prepared.ExpectedUsedCount is not null ||
+                        price.DiscountAmount != 0m)
+                        throw new BusinessException(BusinessErrorType.Conflict, "CHECKOUT_PRICING_INCONSISTENT");
+                }
+                else
+                {
+                    if (!rollout.Enabled)
+                        throw new BusinessException(BusinessErrorType.Conflict, "CHECKOUT_VOUCHER_NOT_ENABLED");
+                    if (prepared.VoucherId is not Guid voucherId || voucherId == Guid.Empty ||
+                        prepared.ExpectedUsedCount is not int expected || expected < 0 ||
+                        price.DiscountAmount <= 0m)
+                        throw new BusinessException(BusinessErrorType.Conflict, "CHECKOUT_PRICING_INCONSISTENT");
+
+                    // Atomic update under the voucher lock. Any later failure rolls back this write.
+                    if (!await voucherUsage.TryIncrementAsync(voucherId, expected, ct))
+                        throw new BusinessException(BusinessErrorType.Conflict, "VOUCHER_USAGE_UPDATE_FAILED");
+                }
 
                 // 8. Decrease stock atomically in a consistent order.
                 foreach (var item in orderItems.OrderBy(x => x.ProductId))
@@ -144,6 +169,7 @@ public sealed class CheckoutService(
                 var order = new Order
                 {
                     UserId = userId,
+                    VoucherId = prepared.VoucherId,
                     OrderCode = orderCode,
                     CheckoutRequestFingerprint = fingerprint,
                     Status = OrderStatus.Pending,

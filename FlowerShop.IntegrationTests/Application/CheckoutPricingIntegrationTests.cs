@@ -10,6 +10,9 @@ using FlowerShop.Application.Common.Pricing;
 using FlowerShop.Application.DTOs.Auth;
 using FlowerShop.Application.DTOs.Orders;
 using FlowerShop.Application.Interfaces.Services;
+using FlowerShop.Application.Services;
+using FlowerShop.Domain.Common;
+using FlowerShop.Domain.Interfaces.Repositories;
 using FlowerShop.Domain.Entities;
 using FlowerShop.Domain.Enums;
 using FlowerShop.Domain.Interfaces;
@@ -40,6 +43,7 @@ public sealed class CheckoutPricingIntegrationTests
         {
             var prepared = await pricing.PrepareAsync(id, code, 500000m);
             Assert.Null(prepared.VoucherId);
+            Assert.Null(prepared.ExpectedUsedCount);
             Assert.Equal(new VoucherPrice(500000m, 0m, 0m, 500000m), prepared.Price);
         }
 
@@ -80,6 +84,7 @@ public sealed class CheckoutPricingIntegrationTests
                 Assert.Equal("Exclusive", await ReadModeAsync(db, cartKey, ct));
                 Assert.Equal("Exclusive", await ReadModeAsync(db, voucherKey, ct));
                 Assert.Equal(s.Voucher.Id, result.VoucherId);
+                Assert.Equal(0, result.ExpectedUsedCount);
                 // 30% of 500000 = 150000, capped at 120000.
                 Assert.Equal(new VoucherPrice(500000m, 0m, 120000m, 380000m), result.Price);
                 Assert.Equal(20m, stale.DiscountValue);
@@ -208,6 +213,155 @@ public sealed class CheckoutPricingIntegrationTests
             Assert.Equal(0, await s.Db.Vouchers.Where(x => x.Id == s.Voucher.Id).Select(x => x.UsedCount).SingleAsync());
             Assert.False(await s.Db.CartItems.AnyAsync(x => x.CartId == s.Cart.Id));
         });
+    }
+
+    [Fact]
+    public async Task Redeem_ShouldPersistVoucherOrderAndPaymentOnceAndReplaySnapshots()
+    {
+        await WithDatabaseAsync(async s =>
+        {
+            var request = VoucherRequest(s);
+            var result = await RunRedemptionAsync(s, request);
+            Assert.False(result.IsReplay);
+            Assert.Equal(500000m, result.Subtotal);
+            Assert.Equal(0m, result.ShippingFee);
+            Assert.Equal(100000m, result.DiscountAmount);
+            Assert.Equal(400000m, result.TotalAmount);
+
+            var order = await s.Db.Orders.AsNoTracking().SingleAsync(x => x.Id == result.OrderId);
+            Assert.Equal(s.Voucher.Id, order.VoucherId);
+            Assert.Equal(CheckoutRequestFingerprint.Compute(request), order.CheckoutRequestFingerprint);
+            Assert.Equal(OrderStatus.Pending, order.Status);
+            Assert.Equal(500000m, order.Subtotal);
+            Assert.Equal(100000m, order.DiscountAmount);
+            Assert.Equal(400000m, order.TotalAmount);
+            var payment = await s.Db.Payments.AsNoTracking().SingleAsync(x => x.OrderId == order.Id);
+            Assert.Equal(PaymentMethod.CashOnDelivery, payment.Method);
+            Assert.Equal(PaymentStatus.Pending, payment.Status);
+            Assert.Equal(400000m, payment.Amount);
+            var item = await s.Db.OrderItems.AsNoTracking().SingleAsync(x => x.OrderId == order.Id);
+            Assert.Equal(s.Product.Id, item.ProductId);
+            Assert.Equal(2, item.Quantity);
+            Assert.Equal(250000m, item.UnitPrice);
+            Assert.Equal(500000m, item.LineTotal);
+            Assert.Equal(1, await s.Db.Vouchers.Where(x => x.Id == s.Voucher.Id).Select(x => x.UsedCount).SingleAsync());
+            Assert.NotNull(await s.Db.Vouchers.Where(x => x.Id == s.Voucher.Id).Select(x => x.UpdatedAt).SingleAsync());
+            Assert.Equal(8, await s.Db.Products.Where(x => x.Id == s.Product.Id).Select(x => x.StockQuantity).SingleAsync());
+            Assert.False(await s.Db.CartItems.AnyAsync(x => x.CartId == s.Cart.Id));
+
+            // Replay ignores live availability and the empty cart, using committed snapshots.
+            Assert.Equal(1, await s.Db.Vouchers.Where(x => x.Id == s.Voucher.Id)
+                .ExecuteUpdateAsync(p => p.SetProperty(x => x.IsActive, false)));
+            request.VoucherCode = $" {s.Voucher.Code.ToLowerInvariant()} ";
+            var replay = await RunRedemptionAsync(s, request);
+            Assert.True(replay.IsReplay);
+            Assert.Equal(result.OrderId, replay.OrderId);
+            Assert.Equal(result.DiscountAmount, replay.DiscountAmount);
+            Assert.Equal(result.TotalAmount, replay.TotalAmount);
+
+            request.VoucherCode = null;
+            var mismatch = await Assert.ThrowsAsync<BusinessException>(() => RunRedemptionAsync(s, request));
+            Assert.Equal("CHECKOUT_REQUEST_MISMATCH", mismatch.Message);
+            Assert.Equal(1, await s.Db.Orders.CountAsync(x => x.VoucherId == s.Voucher.Id));
+            Assert.Equal(1, await s.Db.Vouchers.Where(x => x.Id == s.Voucher.Id).Select(x => x.UsedCount).SingleAsync());
+            Assert.Equal(8, await s.Db.Products.Where(x => x.Id == s.Product.Id).Select(x => x.StockQuantity).SingleAsync());
+        });
+    }
+
+    [Fact]
+    public async Task Redeem_ShouldRollbackAllWritesAfterSaveChangesFailure()
+    {
+        await WithDatabaseAsync(async s =>
+        {
+            var request = VoucherRequest(s);
+            var orderCode = $"FS-{request.CheckoutRequestId:N}";
+            using (var scope = s.Factory.Services.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<FlowerShopDbContext>();
+                var inner = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+                // All real repositories and pricing still share this exact scoped DbContext.
+                var failing = new FailAfterSaveUnitOfWork(inner, async ct =>
+                {
+                    var order = await db.Orders.AsNoTracking().SingleAsync(x => x.OrderCode == orderCode, ct);
+                    Assert.Equal(s.Voucher.Id, order.VoucherId);
+                    Assert.Equal(400000m, order.TotalAmount);
+                    Assert.Equal(1, await db.Payments.CountAsync(x => x.OrderId == order.Id, ct));
+                    Assert.Equal(1, await db.OrderItems.CountAsync(x => x.OrderId == order.Id, ct));
+                    Assert.Equal(1, await db.Vouchers.Where(x => x.Id == s.Voucher.Id).Select(x => x.UsedCount).SingleAsync(ct));
+                    Assert.Equal(8, await db.Products.Where(x => x.Id == s.Product.Id).Select(x => x.StockQuantity).SingleAsync(ct));
+                    Assert.False(await db.CartItems.AnyAsync(x => x.CartId == s.Cart.Id, ct));
+                });
+                var service = NewEnabledService(scope.ServiceProvider, failing);
+                var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CheckoutAsync(s.Customer.Id, request));
+                Assert.Equal("FORCED_FAILURE_AFTER_SAVE", ex.Message);
+                Assert.Null(db.Database.CurrentTransaction);
+            }
+            // Independent context: not a tracked in-memory illusion.
+            await AssertUnredeemedAsync(s);
+            Assert.False(await s.Db.Orders.AnyAsync(x => x.OrderCode == orderCode));
+            // Same request is retryable because no order was committed.
+            var retry = await RunRedemptionAsync(s, request);
+            Assert.False(retry.IsReplay);
+            Assert.Equal(400000m, retry.TotalAmount);
+            Assert.Equal(1, await s.Db.Vouchers.Where(x => x.Id == s.Voucher.Id).Select(x => x.UsedCount).SingleAsync());
+        });
+    }
+
+    [Fact]
+    public async Task UsageWrite_ShouldRequireTransactionAndRejectMismatchedCounter()
+    {
+        await WithDatabaseAsync(async s =>
+        {
+            using var scope = s.Factory.Services.CreateScope();
+            var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+            var usage = scope.ServiceProvider.GetRequiredService<IVoucherUsageWriteRepository>();
+            var error = await Assert.ThrowsAsync<InvalidOperationException>(() => usage.TryIncrementAsync(s.Voucher.Id, 0));
+            Assert.Equal("TRANSACTION_REQUIRED", error.Message);
+            var changed = await uow.ExecuteInLockedTransactionAsync(VoucherLockKeys.ForId(s.Voucher.Id),
+                ct => usage.TryIncrementAsync(s.Voucher.Id, 1, ct));
+            Assert.False(changed);
+            await AssertUnredeemedAsync(s);
+        });
+    }
+
+    private static CheckoutRequestDto VoucherRequest(TestState s) => new()
+    {
+        CheckoutRequestId = Guid.NewGuid(), ShippingAddressId = s.Address.Id,
+        PaymentMethod = PaymentMethod.CashOnDelivery, VoucherCode = s.Voucher.Code
+    };
+
+    private static CheckoutService NewEnabledService(IServiceProvider services, IUnitOfWork uow) => new(
+        uow, services.GetRequiredService<IProductStockRepository>(),
+        services.GetRequiredService<ICheckoutPricingService>(),
+        services.GetRequiredService<IVoucherUsageWriteRepository>(),
+        new CheckoutVoucherRollout(true));
+
+    private static async Task<CheckoutResultDto> RunRedemptionAsync(TestState s, CheckoutRequestDto request)
+    {
+        using var scope = s.Factory.Services.CreateScope();
+        // Only this explicitly constructed test service enables redemption.
+        Assert.False(scope.ServiceProvider.GetRequiredService<CheckoutVoucherRollout>().Enabled);
+        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
+        return await NewEnabledService(scope.ServiceProvider, uow).CheckoutAsync(s.Customer.Id, request);
+    }
+
+    private sealed class FailAfterSaveUnitOfWork(IUnitOfWork inner, Func<CancellationToken, Task> verify) : IUnitOfWork
+    {
+        public IGenericRepository<T> GetRepository<T>() where T : BaseEntity => inner.GetRepository<T>();
+        public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default) => inner.SaveChangesAsync(cancellationToken);
+        public Task AcquireTransactionLockAsync(string resource, CancellationToken cancellationToken = default)
+            => inner.AcquireTransactionLockAsync(resource, cancellationToken);
+        public Task<TResult> ExecuteInTransactionAsync<TResult>(Func<CancellationToken, Task<TResult>> operation,
+            CancellationToken cancellationToken = default) => inner.ExecuteInTransactionAsync(operation, cancellationToken);
+        public Task<TResult> ExecuteInLockedTransactionAsync<TResult>(string resource,
+            Func<CancellationToken, Task<TResult>> operation, CancellationToken cancellationToken = default)
+            => inner.ExecuteInLockedTransactionAsync<TResult>(resource, async ct =>
+            {
+                await operation(ct);
+                await inner.SaveChangesAsync(ct);
+                await verify(ct);
+                throw new InvalidOperationException("FORCED_FAILURE_AFTER_SAVE");
+            }, cancellationToken);
     }
 
     private static async Task<CheckoutPrice> PrepareLockedAsync(TestState s, Guid userId, string code, decimal subtotal = 500000m)

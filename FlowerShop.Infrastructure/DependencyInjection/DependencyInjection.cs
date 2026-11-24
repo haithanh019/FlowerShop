@@ -1,4 +1,4 @@
-﻿using FlowerShop.Domain.Interfaces;
+using FlowerShop.Domain.Interfaces;
 using FlowerShop.Domain.Interfaces.Repositories;
 using FlowerShop.Infrastructure.Data;
 using FlowerShop.Infrastructure.Repositories;
@@ -37,6 +37,7 @@ public static class DependencyInjection
         services.AddScoped<IAdminVoucherReadRepository, AdminVoucherReadRepository>();
         services.AddScoped<IVoucherUsageReadRepository,VoucherUsageReadRepository>();
         services.AddScoped<ICustomerVoucherReadRepository, CustomerVoucherReadRepository>();
+        services.AddScoped<IVoucherUsageWriteRepository, VoucherUsageWriteRepository>();
 
         return services;
     }

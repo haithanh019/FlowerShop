@@ -1,3 +1,4 @@
+using FlowerShop.Application.Common.Pricing;
 using FlowerShop.Application.Interfaces.Queries;
 using FlowerShop.Application.Interfaces.Services;
 using FlowerShop.Application.Queries;
@@ -36,6 +37,8 @@ public static class DependencyInjection
         services.AddScoped<IProductImageService, ProductImageService>();
         services.AddScoped<ICartService, CartService>();
         services.AddScoped<ICheckoutPricingService, CheckoutPricingService>();
+        // Do not enable through configuration until step 5.10.8 is verified.
+        services.AddSingleton(new CheckoutVoucherRollout(false));
         services.AddScoped<ICheckoutService, CheckoutService>();
         services.AddScoped<IAdminOrderStatusService, AdminOrderStatusService>();
         services.AddScoped<IOrderCancellationService, OrderCancellationService>();

@@ -2,9 +2,10 @@
 using FlowerShop.Application.Interfaces.Services;
 using FlowerShop.Application.Queries;
 using FlowerShop.Application.Services;
-using Microsoft.Extensions.DependencyInjection;
 using FlowerShop.Domain.Entities;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace FlowerShop.Application;
 
@@ -40,6 +41,8 @@ public static class DependencyInjection
         services.AddScoped<ICodPaymentSettlementService, CodPaymentSettlementService>();
         services.AddScoped<IUserAddressService, UserAddressService>();
         services.AddScoped<IUserProfileService, UserProfileService>();
+        services.AddScoped<IAdminVoucherQueryService, AdminVoucherQueryService>();
+        services.TryAddSingleton<TimeProvider>(TimeProvider.System);
 
         return services;
     }

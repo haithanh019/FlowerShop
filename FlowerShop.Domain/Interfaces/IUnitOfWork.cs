@@ -1,4 +1,4 @@
-﻿using FlowerShop.Domain.Common;
+using FlowerShop.Domain.Common;
 using FlowerShop.Domain.Interfaces.Repositories;
 
 namespace FlowerShop.Domain.Interfaces;
@@ -20,4 +20,9 @@ public interface IUnitOfWork
         Func<CancellationToken, Task<TResult>> operation,
         CancellationToken cancellationToken = default);
 
+    // Acquire an exclusive transaction-owned lock in the current transaction.
+    // Call sequentially; propagate failures so the outer transaction rolls back.
+    Task AcquireTransactionLockAsync(
+        string resource,
+        CancellationToken cancellationToken = default);
 }

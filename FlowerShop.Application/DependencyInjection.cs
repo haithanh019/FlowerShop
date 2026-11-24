@@ -1,4 +1,4 @@
-﻿using FlowerShop.Application.Interfaces.Queries;
+using FlowerShop.Application.Interfaces.Queries;
 using FlowerShop.Application.Interfaces.Services;
 using FlowerShop.Application.Queries;
 using FlowerShop.Application.Services;
@@ -35,6 +35,7 @@ public static class DependencyInjection
         services.AddScoped<IProductStockService, ProductStockService>();
         services.AddScoped<IProductImageService, ProductImageService>();
         services.AddScoped<ICartService, CartService>();
+        services.AddScoped<ICheckoutPricingService, CheckoutPricingService>();
         services.AddScoped<ICheckoutService, CheckoutService>();
         services.AddScoped<IAdminOrderStatusService, AdminOrderStatusService>();
         services.AddScoped<IOrderCancellationService, OrderCancellationService>();

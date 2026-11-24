@@ -44,7 +44,9 @@ public static class DependencyInjection
         services.AddScoped<IAdminVoucherQueryService, AdminVoucherQueryService>();
         services.TryAddSingleton<TimeProvider>(TimeProvider.System);
         services.AddScoped<IVoucherService, VoucherService>();
-        services.AddScoped<IVoucherPreviewService,VoucherPreviewService>();
+        services.AddScoped<IVoucherPreviewService, VoucherPreviewService>();
+        services.AddScoped<ICustomerVoucherQueryService, CustomerVoucherQueryService>();
+
         return services;
     }
 }

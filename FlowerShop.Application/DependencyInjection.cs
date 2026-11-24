@@ -22,6 +22,7 @@ public static class DependencyInjection
         services.AddScoped<ICartQueryService, CartQueryService>();
         services.AddScoped<IOrderQueryService, OrderQueryService>();
         services.AddScoped<IAdminOrderQueryService, AdminOrderQueryService>();
+
         // Register Application Services
         services.AddScoped<IAuthService, AuthService>();
         services.AddScoped<IPasswordHasher<User>,PasswordHasher<User>>();
@@ -38,6 +39,7 @@ public static class DependencyInjection
         services.AddScoped<IOrderCancellationService, OrderCancellationService>();
         services.AddScoped<ICodPaymentSettlementService, CodPaymentSettlementService>();
         services.AddScoped<IUserAddressService, UserAddressService>();
+        services.AddScoped<IUserProfileService, UserProfileService>();
 
         return services;
     }

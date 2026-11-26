@@ -227,6 +227,70 @@ public sealed class VoucherCancellationConcurrencyTests
         });
     }
 
+    [Fact]
+    public async Task Replay_CancellationCommitsAfterInitialLookup_ShouldReturnFreshConsistentStatuses()
+    {
+        await WithDatabaseAsync(1, async s =>
+        {
+            var request = Request(s, s.Alice);
+            var original = await CheckoutAsync(s, s.Alice, request);
+            await AssertUsageAsync(s, 1, 1);
+            using (var scope = s.Factory.Services.CreateScope())
+            {
+                var sp = scope.ServiceProvider;
+                var inner = sp.GetRequiredService<IUnitOfWork>();
+                // Deterministically commit cancellation in a separate scope between
+                // the replay's first order lookup and acquisition of its order lock.
+                // The callback runs before the real lock; no circular wait is created.
+                var uow = new BeforeReplayOrderLock(inner, $"flower-shop:order:{original.OrderId:N}",
+                    async ct =>
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        var cancelled = await CancelAsync(s, s.Alice, original.OrderId);
+                        Assert.Equal(OrderStatus.Cancelled, cancelled.Status);
+                    });
+                var service = new CheckoutService(uow, sp.GetRequiredService<IProductStockRepository>(),
+                    sp.GetRequiredService<ICheckoutPricingService>(),
+                    sp.GetRequiredService<IVoucherUsageWriteRepository>(), new CheckoutVoucherRollout(true));
+                var replay = await service.CheckoutAsync(s.Alice.User.Id, request);
+                Assert.Equal(1, uow.Calls);
+                Assert.True(replay.IsReplay);
+                Assert.Equal(original.OrderId, replay.OrderId);
+                Assert.Equal(OrderStatus.Cancelled, replay.Status);
+                Assert.Equal(PaymentStatus.Cancelled, replay.PaymentStatus);
+                Assert.Equal(original.DiscountAmount, replay.DiscountAmount);
+                Assert.Equal(original.TotalAmount, replay.TotalAmount);
+            }
+            await AssertUsageAsync(s, 0, 1);
+            await AssertOrderAsync(s, s.Alice, request, original.OrderId, OrderStatus.Cancelled);
+            await AssertShopperAsync(s, s.Alice, 10, 0);
+        });
+    }
+
+    // Test-only deterministic interleaving. No database write or lock is mocked.
+    private sealed class BeforeReplayOrderLock(IUnitOfWork inner, string orderKey,
+        Func<CancellationToken, Task> beforeLock) : IUnitOfWork
+    {
+        public int Calls { get; private set; }
+        public IGenericRepository<T> GetRepository<T>() where T : BaseEntity => inner.GetRepository<T>();
+        public Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
+            => inner.SaveChangesAsync(cancellationToken);
+        public Task<TResult> ExecuteInTransactionAsync<TResult>(Func<CancellationToken, Task<TResult>> operation,
+            CancellationToken cancellationToken = default) => inner.ExecuteInTransactionAsync(operation, cancellationToken);
+        public Task<TResult> ExecuteInLockedTransactionAsync<TResult>(string resource,
+            Func<CancellationToken, Task<TResult>> operation, CancellationToken cancellationToken = default)
+            => inner.ExecuteInLockedTransactionAsync(resource, operation, cancellationToken);
+        public async Task AcquireTransactionLockAsync(string resource, CancellationToken cancellationToken = default)
+        {
+            if (StringComparer.Ordinal.Equals(resource, orderKey))
+            {
+                Calls++;
+                await beforeLock(cancellationToken);
+            }
+            await inner.AcquireTransactionLockAsync(resource, cancellationToken);
+        }
+    }
+
     private static CheckoutRequestDto Request(State s, Shopper shopper) => new()
     {
         CheckoutRequestId = Guid.NewGuid(), ShippingAddressId = shopper.Address.Id,

@@ -47,6 +47,15 @@ public sealed class CheckoutService(
                 {
                     if (existingOrder.UserId != userId)
                         throw new BusinessException(BusinessErrorType.Conflict, "CHECKOUT_REQUEST_ID_IN_USE");
+                    // Serialize replay reads with cancellation, status transitions and COD settlement.
+                    // The initial lookup identifies the order only; its status may already be stale.
+                    await unitOfWork.AcquireTransactionLockAsync(
+                        $"flower-shop:order:{existingOrder.Id:N}", ct);
+                    existingOrder = await unitOfWork.GetRepository<Order>().GetByIdAsync(
+                        existingOrder.Id, trackChanges: false, cancellationToken: ct)
+                        ?? throw new BusinessException(BusinessErrorType.Conflict, "CHECKOUT_ORDER_DATA_INCOMPLETE");
+                    if (existingOrder.UserId != userId)
+                        throw new BusinessException(BusinessErrorType.Conflict, "CHECKOUT_REQUEST_ID_IN_USE");
                     if (existingOrder.CheckoutRequestFingerprint is null)
                         throw new BusinessException(BusinessErrorType.Conflict, "CHECKOUT_REQUEST_NOT_VERIFIABLE");
                     if (!StringComparer.Ordinal.Equals(existingOrder.CheckoutRequestFingerprint, fingerprint))

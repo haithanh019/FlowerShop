@@ -177,7 +177,7 @@ public sealed class OrderVoucherCancellationTests
     {
         using var scope = s.Factory.Services.CreateScope();
         var sp = scope.ServiceProvider;
-        Assert.False(sp.GetRequiredService<CheckoutVoucherRollout>().Enabled);
+        Assert.True(sp.GetRequiredService<CheckoutVoucherRollout>().Enabled);
         var service = new CheckoutService(sp.GetRequiredService<IUnitOfWork>(),
             sp.GetRequiredService<IProductStockRepository>(), sp.GetRequiredService<ICheckoutPricingService>(),
             sp.GetRequiredService<IVoucherUsageWriteRepository>(), new CheckoutVoucherRollout(true));

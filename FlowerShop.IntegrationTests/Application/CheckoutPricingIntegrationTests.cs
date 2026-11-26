@@ -21,9 +21,11 @@ using FlowerShop.IntegrationTests.Helpers;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit;
 
 namespace FlowerShop.IntegrationTests.Application;
@@ -151,7 +153,8 @@ public sealed class CheckoutPricingIntegrationTests
     {
         await WithDatabaseAsync(async s =>
         {
-            using var client = s.Factory.CreateClient(new WebApplicationFactoryClientOptions
+            using var disabled = DisabledHost(s);
+            using var client = disabled.CreateClient(new WebApplicationFactoryClientOptions
             {
                 BaseAddress = new Uri("https://localhost")
             });
@@ -175,7 +178,7 @@ public sealed class CheckoutPricingIntegrationTests
                 Assert.Equal(expected, problem.Detail);
             }
 
-            // Temporary guard: valid voucher must not create a full-price order.
+            // Emergency guard: valid voucher must not create a full-price order.
             await ExpectConflictAsync("CHECKOUT_VOUCHER_NOT_ENABLED");
             await AssertUnredeemedAsync(s);
 
@@ -213,6 +216,76 @@ public sealed class CheckoutPricingIntegrationTests
             Assert.Equal(0, await s.Db.Vouchers.Where(x => x.Id == s.Voucher.Id).Select(x => x.UsedCount).SingleAsync());
             Assert.False(await s.Db.CartItems.AnyAsync(x => x.CartId == s.Cart.Id));
         });
+    }
+
+    [Fact]
+    public async Task CheckoutHttp_DisabledRollout_ShouldStillReplayAndCancelRedeemedOrder()
+    {
+        await WithDatabaseAsync(async s =>
+        {
+            var request = VoucherRequest(s);
+            var created = await RunRedemptionAsync(s, request);
+            Assert.False(created.IsReplay);
+            Assert.Equal(400000m, created.TotalAmount);
+            using var disabled = DisabledHost(s);
+            using var client = disabled.CreateClient(new WebApplicationFactoryClientOptions
+            {
+                BaseAddress = new Uri("https://localhost"), AllowAutoRedirect = false
+            });
+            using var login = await client.PostAsJsonAsync("/api/auth/login",
+                new LoginDto { Email = s.Customer.Email, Password = Password });
+            Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+            var token = Assert.IsType<LoginResponseDto>(await login.Content.ReadFromJsonAsync<LoginResponseDto>());
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token.AccessToken);
+            async Task<CheckoutResultDto> ReplayAsync()
+            {
+                using var response = await client.PostAsJsonAsync("/api/orders/checkout", request);
+                Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+                var result = Assert.IsType<CheckoutResultDto>(await response.Content.ReadFromJsonAsync<CheckoutResultDto>());
+                Assert.True(result.IsReplay);
+                Assert.Equal(created.OrderId, result.OrderId);
+                Assert.Equal(created.TotalAmount, result.TotalAmount);
+                Assert.Equal(created.DiscountAmount, result.DiscountAmount);
+                return result;
+            }
+            Assert.Equal(OrderStatus.Pending, (await ReplayAsync()).Status);
+            Assert.Equal(1, await s.Db.Vouchers.Where(x => x.Id == s.Voucher.Id).Select(x => x.UsedCount).SingleAsync());
+            using var cancel = await client.PostAsync($"/api/orders/{created.OrderId}/cancel", null);
+            Assert.Equal(HttpStatusCode.OK, cancel.StatusCode);
+            var cancelled = Assert.IsType<OrderStatusUpdateResultDto>(await cancel.Content.ReadFromJsonAsync<OrderStatusUpdateResultDto>());
+            Assert.Equal(OrderStatus.Cancelled, cancelled.Status);
+            var replay = await ReplayAsync();
+            Assert.Equal(OrderStatus.Cancelled, replay.Status);
+            Assert.Equal(PaymentStatus.Cancelled, replay.PaymentStatus);
+            var order = await s.Db.Orders.AsNoTracking().SingleAsync(x => x.Id == created.OrderId);
+            Assert.Equal(s.Voucher.Id, order.VoucherId);
+            Assert.Equal(created.TotalAmount, order.TotalAmount);
+            Assert.Equal(created.DiscountAmount, order.DiscountAmount);
+            Assert.Equal(CheckoutRequestFingerprint.Compute(request), order.CheckoutRequestFingerprint);
+            Assert.Equal(0, await s.Db.Vouchers.Where(x => x.Id == s.Voucher.Id).Select(x => x.UsedCount).SingleAsync());
+            Assert.Equal(0L, await s.Db.Orders.LongCountAsync(x => x.VoucherId == s.Voucher.Id && x.Status != OrderStatus.Cancelled));
+            Assert.Equal(1, await s.Db.Orders.CountAsync(x => x.UserId == s.Customer.Id));
+            Assert.Equal(10, await s.Db.Products.Where(x => x.Id == s.Product.Id).Select(x => x.StockQuantity).SingleAsync());
+            Assert.False(await s.Db.CartItems.AnyAsync(x => x.CartId == s.Cart.Id));
+            using var repeated = await client.PostAsync($"/api/orders/{created.OrderId}/cancel", null);
+            Assert.Equal(HttpStatusCode.Conflict, repeated.StatusCode);
+            Assert.Equal("ORDER_ALREADY_CANCELLED", Assert.IsType<ProblemDetails>(await repeated.Content.ReadFromJsonAsync<ProblemDetails>()).Detail);
+        });
+    }
+
+    private static WebApplicationFactory<FlowerShop.API.Program> DisabledHost(TestState s)
+    {
+        var host = s.Factory.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
+        {
+            services.RemoveAll<CheckoutVoucherRollout>();
+            services.AddSingleton(new CheckoutVoucherRollout(false));
+        }));
+        try
+        {
+            Assert.False(host.Services.GetRequiredService<CheckoutVoucherRollout>().Enabled);
+            return host;
+        }
+        catch { host.Dispose(); throw; }
     }
 
     [Fact]
@@ -339,10 +412,9 @@ public sealed class CheckoutPricingIntegrationTests
     private static async Task<CheckoutResultDto> RunRedemptionAsync(TestState s, CheckoutRequestDto request)
     {
         using var scope = s.Factory.Services.CreateScope();
-        // Only this explicitly constructed test service enables redemption.
-        Assert.False(scope.ServiceProvider.GetRequiredService<CheckoutVoucherRollout>().Enabled);
-        var uow = scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
-        return await NewEnabledService(scope.ServiceProvider, uow).CheckoutAsync(s.Customer.Id, request);
+        Assert.True(scope.ServiceProvider.GetRequiredService<CheckoutVoucherRollout>().Enabled);
+        return await scope.ServiceProvider.GetRequiredService<ICheckoutService>()
+            .CheckoutAsync(s.Customer.Id, request);
     }
 
     private sealed class FailAfterSaveUnitOfWork(IUnitOfWork inner, Func<CancellationToken, Task> verify) : IUnitOfWork

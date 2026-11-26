@@ -222,7 +222,7 @@ public sealed class CheckoutVoucherIntegrationTests
             request.VoucherCode = null;
             using var scope = s.Factory.Services.CreateScope();
             var service = scope.ServiceProvider.GetRequiredService<ICheckoutService>();
-            Assert.False(scope.ServiceProvider.GetRequiredService<CheckoutVoucherRollout>().Enabled);
+            Assert.True(scope.ServiceProvider.GetRequiredService<CheckoutVoucherRollout>().Enabled);
             var result = await service.CheckoutAsync(s.Alice.User.Id, request);
             Assert.False(result.IsReplay);
             await AssertCommittedAsync(s, s.Alice, request, result, 0m);
@@ -250,7 +250,7 @@ public sealed class CheckoutVoucherIntegrationTests
     private static CheckoutService NewEnabledService(IServiceProvider sp, DateTime now,
         TwoPartyGate? pricingGate = null, IProductStockRepository? stock = null)
     {
-        Assert.False(sp.GetRequiredService<CheckoutVoucherRollout>().Enabled);
+        Assert.True(sp.GetRequiredService<CheckoutVoucherRollout>().Enabled);
         var uow = sp.GetRequiredService<IUnitOfWork>();
         ICheckoutPricingService pricing = new CheckoutPricingService(uow,
             sp.GetRequiredService<IVoucherUsageReadRepository>(),

@@ -87,7 +87,7 @@ public sealed class CheckoutService(
                         existingOrder.TotalAmount, previousResultItems, existingOrder.CreatedAt, IsReplay: true);
                 }
 
-                // Normal API DI remains disabled until cancellation restoration is verified.
+                // Emergency rollout guard: block new voucher redemption only.
                 if (voucherCode is not null && !rollout.Enabled)
                     throw new BusinessException(BusinessErrorType.Conflict, "CHECKOUT_VOUCHER_NOT_ENABLED");
 

@@ -13,10 +13,8 @@ using FlowerShop.IntegrationTests.Helpers;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.AspNetCore.TestHost;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Xunit;
 
 namespace FlowerShop.IntegrationTests.Application;
@@ -451,13 +449,8 @@ public sealed class VoucherCancellationHttpTests
     {
         var connection = Environment.GetEnvironmentVariable("FLOWERSHOP_TEST_CONNECTION_STRING")
             ?? throw new InvalidOperationException("Missing FLOWERSHOP_TEST_CONNECTION_STRING.");
-        using var root = new TestApiFactory(connection);
-        using var factory = root.WithWebHostBuilder(builder => builder.ConfigureTestServices(services =>
-        {
-            // Override only the rollout value; real authentication and all persistence remain in place.
-            services.RemoveAll<CheckoutVoucherRollout>();
-            services.AddSingleton(new CheckoutVoucherRollout(true));
-        }));
+        // Exercise the actual release DI, not a test-only enabled override.
+        using var factory = new TestApiFactory(connection);
         using var scope = factory.Services.CreateScope();
         var sp = scope.ServiceProvider;
         Assert.True(sp.GetRequiredService<CheckoutVoucherRollout>().Enabled);

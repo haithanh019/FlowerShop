@@ -308,7 +308,7 @@ public sealed class VoucherCancellationConcurrencyTests
     {
         using var scope = s.Factory.Services.CreateScope();
         var sp = scope.ServiceProvider;
-        Assert.False(sp.GetRequiredService<CheckoutVoucherRollout>().Enabled);
+        Assert.True(sp.GetRequiredService<CheckoutVoucherRollout>().Enabled);
         var uow = Uow(s, sp, gate);
         var pricing = new CheckoutPricingService(uow, sp.GetRequiredService<IVoucherUsageReadRepository>(),
             sp.GetRequiredService<IUserAccessService>(), sp.GetRequiredService<TimeProvider>());
